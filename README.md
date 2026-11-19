@@ -2,9 +2,9 @@
 
 **Ton système d'exploitation personnel, augmenté par l'IA.**
 
-NEXUS centralise tes projets, tâches, objectifs, idées, notes et données personnelles (finances, sport, habitudes), et y branche une IA — Claude — qui les connaît, raisonne dessus, agit pour toi et te contredit quand ton raisonnement ne tient pas.
+NEXUS centralise tes projets, tâches, objectifs, idées, notes et données personnelles (finances, sport, habitudes), et y branche une IA — gratuite et locale (Ollama), ou Claude — qui les connaît, raisonne dessus, agit pour toi et te contredit quand ton raisonnement ne tient pas.
 
-Tout tourne **sur ta machine**. Les données restent dans un fichier local. Rien n'est envoyé ailleurs, sauf à l'API Anthropic, et uniquement quand tu sollicites l'IA.
+Tout tourne **sur ta machine**. Les données restent dans un fichier local. Avec l'IA locale (par défaut), rien ne quitte ton Mac ; si tu choisis Claude, les échanges passent par l'API Anthropic, uniquement quand tu sollicites l'IA.
 
 ---
 
@@ -58,15 +58,20 @@ Au premier lancement, NEXUS te demande ton prénom et te propose :
 
 Pour arrêter : `Ctrl + C` dans le Terminal.
 
-### 4. Activer l'IA
+### 4. Activer l'IA — gratuite, sur ton Mac
 
-1. Crée une clé API sur [console.anthropic.com](https://console.anthropic.com) (rubrique *API Keys*).
-2. Dans NEXUS : **Réglages → Intelligence artificielle → Ajouter ta clé**.
-3. Clique sur **Tester** (vérification gratuite, aucun token consommé).
+Par défaut, NEXUS utilise une **IA locale** : un modèle open source qui tourne sur ton Mac grâce à **Ollama**. Gratuit, sans limite, et tes données ne quittent jamais la machine.
 
-Alternative : copie `.env.example` en `.env` et renseigne `ANTHROPIC_API_KEY=...`.
+1. Télécharge Ollama sur [ollama.com/download](https://ollama.com/download), glisse l'app dans Applications et ouvre-la (une icône de lama apparaît dans la barre des menus).
+2. Dans NEXUS : **Réglages → Intelligence artificielle**. Ollama est détecté automatiquement.
+3. Clique sur **Télécharger** à côté de **qwen3:8b** (≈ 5 Go, une seule fois). C'est le modèle conseillé pour un Mac M1/M2/M3 avec 16 Go : bon en français et capable d'utiliser les outils de NEXUS. `qwen3:4b` est plus rapide mais moins fiable.
+4. Clique sur **Tester**. C'est prêt.
 
-**Coûts.** Chaque message, briefing ou analyse consomme des tokens facturés sur ton compte Anthropic. NEXUS ne fait **aucun appel sans action de ta part** (pas de briefing automatique, pas d'analyse en arrière-plan). Seules les automatisations que tu crées avec une étape « Demander à Claude » peuvent appeler l'IA seules, selon le déclencheur que tu choisis. Le modèle (Opus 5.5 par défaut) et le niveau d'effort se règlent dans Réglages ; Sonnet ou Haiku coûtent moins cher.
+À savoir : le premier message prend quelques secondes (chargement du modèle en mémoire), les suivants sont plus rapides. Le modèle reste chargé 30 minutes après le dernier échange. Un modèle local est nettement moins fin que Claude : il peut se tromper d'outil ou rater une analyse complexe. L'effort « Approfondi » le fait réfléchir avant de répondre (plus juste, mais plus lent).
+
+#### Option : Claude (payant, plus intelligent)
+
+Dans **Réglages → Intelligence artificielle**, choisis **Claude**, puis ajoute une clé API créée sur [console.anthropic.com](https://console.anthropic.com) (crédit prépayé). Avec **Claude Haiku 5.5**, un échange coûte environ 0,3 centime. Tu peux passer de l'un à l'autre à tout moment, même au milieu d'une conversation. NEXUS ne fait **aucun appel sans action de ta part** ; seules les automatisations que tu crées avec une étape « Demander à l'IA » peuvent l'appeler seules.
 
 ---
 
@@ -115,7 +120,7 @@ Pour que Jarvis réponde même quand tu n'as pas pensé à lancer NEXUS, active 
 
 ### Ce qui reste réservé au Mac
 
-Par sécurité, depuis l'iPhone tu ne peux pas : voir ou changer la clé API, exporter/sauvegarder/réinitialiser les données, ni relier d'autres appareils.
+Par sécurité, depuis l'iPhone tu ne peux pas : changer d'IA ou de clé API, télécharger un modèle, exporter/sauvegarder/réinitialiser les données, ni relier d'autres appareils.
 
 ---
 
@@ -164,7 +169,10 @@ Quelques usages qui exploitent bien NEXUS :
 - **L'iPhone affiche « NEXUS est injoignable »** : le Mac est éteint ou en veille, NEXUS n'est pas lancé, ou Tailscale est déconnecté sur l'un des deux appareils.
 - **Jarvis n'entend rien** : vérifie que tu utilises l'adresse Tailscale (HTTPS) et que Safari a l'autorisation du micro (Réglages → Safari → Micro). Dans l'app ajoutée à l'écran d'accueil, selon la version d'iOS, la reconnaissance vocale peut être indisponible : utilise alors le bouton clavier et la dictée (micro du clavier iOS), ou ouvre Jarvis dans Safari.
 - **`node:sqlite` introuvable** : ta version de Node est trop ancienne (voir prérequis).
-- **« Clé API refusée »** : vérifie la clé dans Réglages, et que ton compte Anthropic a du crédit.
+- **« Ollama n'est pas lancé »** : ouvre l'app Ollama (icône lama dans la barre des menus). Pour qu'elle démarre toute seule : Réglages Système → Général → Ouverture → ajoute Ollama.
+- **L'IA locale est très lente ou le Mac rame** : ferme les apps gourmandes, ou passe à `qwen3:4b` dans Réglages. Évite les modèles de plus de ~10 milliards de paramètres avec 16 Go.
+- **L'IA locale invente ou n'utilise pas les outils** : c'est la limite d'un petit modèle. Reformule plus explicitement (« crée une tâche… »), ou passe à Claude pour les analyses importantes.
+- **« Clé API refusée »** (Claude) : vérifie la clé dans Réglages, et que ton compte Anthropic a du crédit.
 - **« Modèle introuvable »** : ton compte n'a pas accès à ce modèle ; choisis-en un autre dans Réglages.
 
 ---

@@ -55,6 +55,13 @@ Côté interface : React, TanStack Query (cache et rafraîchissement des donnée
 
 ## L'intelligence artificielle
 
+### Deux cerveaux au choix : local (Ollama) ou Claude
+`server/ai/providers.ts` aiguille chaque appel vers le fournisseur choisi dans les Réglages :
+- **Ollama** (`server/ai/ollama.ts`, par défaut) : IA locale gratuite. NEXUS parle à l'API native d'Ollama (`/api/chat` en streaming NDJSON, `/api/tags`, `/api/show`, `/api/pull`) avec `fetch`, sans dépendance. Contexte élargi à 16 384 tokens (nos instructions et 26 outils dépassent les 4 096 par défaut), modèle gardé en mémoire 30 min (`keep_alive`) pour que Jarvis réponde vite. Les capacités du modèle (`tools`, `thinking`) sont lues via `/api/show` : on n'envoie ni outils ni réflexion à un modèle qui ne les gère pas. Sorties structurées via `format` (schéma JSON) avec un second essai si le petit modèle se trompe.
+- **Claude** : API Messages d'Anthropic, comme décrit ci-dessous.
+
+**Un seul format d'historique.** Les réponses d'Ollama sont converties dans le format de blocs de Claude (texte, `tool_use`, `tool_result`), avec des identifiants générés. On peut donc changer d'IA au milieu d'une conversation. La réflexion d'un modèle local est stockée sous un type propre à NEXUS (`local_thinking`), affichée dans l'interface mais jamais envoyée à Claude.
+
 ### Où tourne l'agent ?
 NEXUS héberge **sa propre boucle d'agent** (API Messages d'Anthropic + outils locaux). Raison : les outils lisent et écrivent ta base SQLite locale, ils doivent donc s'exécuter sur ta machine. Une solution hébergée (Managed Agents) aurait demandé d'exposer ta base à l'extérieur.
 
@@ -134,13 +141,14 @@ Les tables `transactions`, `workouts` et `metric_entries` ont une colonne `sourc
 
 ## Tests
 
-`npm test` lance 64 tests (Vitest) sur les parties critiques :
+`npm test` lance 74 tests (Vitest) sur les parties critiques :
 - **données** : migrations, progression et santé des projets, objectifs, conversion idée → projet, liens, graphe, recherche plein texte, séries d'habitudes, import CSV sans doublons ;
 - **IA** (avec un client Claude simulé, sans réseau ni coût) : boucle d'outils, persistance, historique en ajout seul, mode lecture seule, réparation des tours interrompus, entrées tronquées, refus, traduction des erreurs ;
 - **automatisations** : gabarits, simulation sans effet, conditions, erreurs, appels HTTP, planification, événements sans boucle ;
 - **API** : protections de sécurité, validation, parcours complet, gestion de la clé, réinitialisation avec sauvegarde ;
 - **accès distant** : appairage, code à usage unique et expiration, anti force brute, révocation, actions réservées au Mac, anti-CSRF ;
-- **voix** : nettoyage du Markdown pour l'oral, découpage en phrases, consigne vocale.
+- **voix** : nettoyage du Markdown pour l'oral, découpage en phrases, consigne vocale ;
+- **IA locale** (faux serveur Ollama) : détection, modèle manquant, boucle d'outils, format des messages, modèles sans outils, passage à Claude en cours de conversation, sorties structurées avec second essai, téléchargement.
 
 ### Ce qui a été vérifié pendant la construction, et ce qui ne l'a pas été
 - ✅ Tests automatisés ci-dessus, vérification TypeScript, build de production.
@@ -148,5 +156,7 @@ Les tables `transactions`, `workouts` et `metric_entries` ont une colonne `sourc
 - ✅ Chaîne IA complète avec le **vrai SDK Anthropic** branché sur un **serveur API simulé** local : vérification de clé, briefing, analyse d'idée, audit de projet, chat en streaming avec appel d'outil, à travers le proxy de développement, deux messages dans la même conversation.
 - ⚠️ **Non testé : appels réels à l'API Anthropic** (aucune clé disponible pendant la construction, et pour ne rien dépenser sans ton accord). Le format des requêtes suit la documentation officielle du SDK, mais le premier vrai test se fera avec ta clé : commence par « Tester » dans Réglages (gratuit), puis un premier message court.
 - ✅ Accès iPhone simulé (Chromium en profil « iPhone 15 Pro ») sur le serveur de production : appairage par code et par QR, refus d'un code faux, confirmation en direct côté Mac, Command Center et Jarvis sur iPhone, actions sensibles masquées, révocation. Boucle vocale complète avec micro et voix **simulés** : écoute, transcription en direct, réponse lue phrase par phrase sans Markdown, réécoute automatique, retour au repos.
+- ✅ IA locale de bout en bout avec un **faux serveur Ollama** : détection automatique au lancement, téléchargement du modèle avec progression, test, chat avec appel d'outil, briefing, Jarvis.
+- ⚠️ **Non testé avec un vrai Ollama ni un vrai modèle** (les serveurs d'Ollama sont inaccessibles depuis l'environnement de construction) : le format suit la documentation de l'API Ollama ; la qualité réelle des réponses (français, choix des outils) dépend du modèle.
 - ⚠️ **Non testé sur un vrai iPhone** ni avec un vrai micro : la qualité de la reconnaissance et des voix dépend d'iOS. **Non testés** : Tailscale réel (l'activation HTTPS lance `tailscale serve --bg 4318`), le démarrage automatique `launchd` et `NEXUS.command` (scripts vérifiés syntaxiquement, plist validé, mais jamais exécutés sur un Mac).
 - ⚠️ Développé et testé sous Linux. Le code n'utilise rien de spécifique à un système, mais le premier lancement sur ton Mac reste à faire.

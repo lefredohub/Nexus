@@ -2,10 +2,9 @@
  * Fonctions IA « à sortie structurée » : Claude renvoie un objet JSON validé
  * par un schéma Zod (analyse d'idée, analyse de projet, briefing du jour).
  */
-import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod';
 import type { z } from 'zod';
-import { getClient, baseParams, toAppError, type AIDeps } from './client';
-import { AppError } from '../lib/errors';
+import type { AIDeps } from './client';
+import { completeStructured } from './providers';
 import { ideaAnalysis, projectAnalysis, briefingSchema, type IdeaAnalysis, type ProjectAnalysis, type Briefing } from '../../shared/schemas';
 import { getIdea, saveIdeaAnalysis, type Idea } from '../repos/ideas';
 import { getProject, saveProjectAnalysis } from '../repos/projects';
@@ -16,24 +15,8 @@ import { get, run, nowISO, todayISO, parseJSON } from '../db/client';
 
 const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, Number.isFinite(n) ? n : min));
 
-async function structured<S extends z.ZodType>(deps: AIDeps, schema: S, system: string, prompt: string, effort?: string): Promise<{ data: z.infer<S>; model: string }> {
-  const client = getClient(deps);
-  try {
-    const res = await client.beta.messages.parse({
-      ...baseParams(deps, { effort }),
-      max_tokens: 16000,
-      system,
-      messages: [{ role: 'user', content: prompt }],
-      output_config: { ...baseParams(deps, { effort }).output_config, format: betaZodOutputFormat(schema) },
-    });
-    if (res.stop_reason === 'refusal') throw new AppError(422, 'refusal', 'Le modèle a refusé cette demande.');
-    if (res.stop_reason === 'max_tokens') throw new AppError(502, 'truncated', 'Réponse tronquée : réessaie.');
-    if (!res.parsed_output) throw new AppError(502, 'invalid_output', "La réponse de l'IA n'a pas pu être interprétée.");
-    return { data: res.parsed_output as z.infer<S>, model: res.model };
-  } catch (err) {
-    throw toAppError(err);
-  }
-}
+/** Délègue au fournisseur actif (Ollama ou Claude) : JSON validé par le schéma. */
+const structured = <S extends z.ZodType>(deps: AIDeps, schema: S, system: string, prompt: string, effort?: string) => completeStructured(deps, schema, system, prompt, effort);
 
 const memoryDigest = (deps: AIDeps) =>
   listMemories(deps.db, 30)

@@ -86,3 +86,28 @@ export async function streamChat(body: { conversationId?: string | null; message
     }
   }
 }
+
+/** Requête POST dont la réponse est un flux SSE (ex. téléchargement d'un modèle). */
+export async function postSSE(path: string, body: unknown, onEvent: (event: string, data: unknown) => void, signal?: AbortSignal) {
+  const res = await fetch(`/api${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal });
+  if (!res.ok || !res.body) {
+    const data = await res.json().catch(() => null);
+    throw new ApiError(res.status, data?.error?.code ?? 'error', data?.error?.message ?? `Erreur ${res.status}`);
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let idx: number;
+    while ((idx = buffer.indexOf('\n\n')) >= 0) {
+      const chunk = buffer.slice(0, idx);
+      buffer = buffer.slice(idx + 2);
+      const event = chunk.split('\n').find((l) => l.startsWith('event:'))?.slice(6).trim() ?? 'message';
+      const data = chunk.split('\n').filter((l) => l.startsWith('data:')).map((l) => l.slice(5).trimStart()).join('\n');
+      if (data) onEvent(event, JSON.parse(data));
+    }
+  }
+}

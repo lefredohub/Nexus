@@ -90,7 +90,7 @@ export function Jarvis() {
   const phaseRef = useRef<Phase>('idle');
   const relisten = useRef(false);
   const mic = micAvailability();
-  const online = ai?.key.configured;
+  const online = ai?.online;
 
   const go = (p: Phase) => {
     phaseRef.current = p;
@@ -281,8 +281,8 @@ export function Jarvis() {
         <div className="mt-4 w-full max-w-[560px] space-y-4 text-center">
           {!online ? (
             <p className="text-[15px] text-ink-2">
-              Jarvis a besoin de ta clé API.{' '}
-              {ai?.mode === 'remote' ? 'Ajoute-la depuis les Réglages de NEXUS sur ton Mac.' : <Link to="/settings" className="text-signal">Configurer →</Link>}
+              {ai?.reason ?? 'L’IA est hors ligne.'}{' '}
+              {ai?.mode === 'remote' ? 'À régler sur le Mac : Réglages → Intelligence artificielle.' : <Link to="/settings" className="text-signal">Configurer →</Link>}
             </p>
           ) : !heard && !reply ? (
             <p className="text-[19px] font-medium leading-snug tracking-[-0.01em] text-ink">

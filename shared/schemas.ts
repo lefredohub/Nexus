@@ -276,6 +276,9 @@ export const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
 
 export const settingsPatch = z.object({
   user_name: text(60).optional(),
+  ai_provider: z.enum(['anthropic', 'ollama']).optional(),
+  /** Nom de modèle Ollama, ex. « qwen3:8b » ou « llama3.1:8b ». */
+  ollama_model: z.string().trim().regex(/^[a-zA-Z0-9][a-zA-Z0-9._:\/-]{0,99}$/, 'Nom de modèle invalide').optional(),
   ai_model: z.enum(AI_MODELS).optional(),
   ai_effort: z.enum(EFFORTS).optional(),
   ai_allow_writes: z.boolean().optional(),

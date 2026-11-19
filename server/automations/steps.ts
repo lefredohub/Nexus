@@ -13,7 +13,8 @@ import { createTask } from '../repos/tasks';
 import { createNote, createMemory } from '../repos/notes';
 import { addMetricEntry } from '../repos/analytics';
 import { logActivity } from '../repos/activity';
-import { getClient, baseParams, toAppError, type AIDeps } from '../ai/client';
+import type { AIDeps } from '../ai/client';
+import { completeText } from '../ai/providers';
 
 export interface StepContext {
   db: DB;
@@ -146,8 +147,8 @@ const notifyStep = define({
 
 const aiPromptStep = define({
   type: 'ai_prompt',
-  label: 'Demander à Claude',
-  description: 'Envoie une consigne à Claude et récupère sa réponse texte (utilisable par les étapes suivantes).',
+  label: 'Demander à l’IA',
+  description: 'Envoie une consigne à l’IA (locale ou Claude) et récupère sa réponse texte, utilisable par les étapes suivantes.',
   category: 'ai',
   sideEffect: true,
   config: z.object({ prompt: z.string().min(1), effort: z.enum(['low', 'medium', 'high']).default('low') }),
@@ -155,17 +156,7 @@ const aiPromptStep = define({
     { key: 'prompt', label: 'Consigne', type: 'textarea', placeholder: 'Résume en 3 points : {{trigger.idea.content}}' },
     { key: 'effort', label: 'Effort', type: 'select', options: [{ value: 'low', label: 'Rapide' }, { value: 'medium', label: 'Équilibré' }, { value: 'high', label: 'Approfondi' }] },
   ],
-  run: async (c, { ai }) => {
-    const client = getClient(ai);
-    try {
-      const res = await client.beta.messages.create({ ...baseParams(ai, { effort: c.effort }), max_tokens: 8000, messages: [{ role: 'user', content: c.prompt }] });
-      if (res.stop_reason === 'refusal') throw new Error('Le modèle a refusé la consigne.');
-      const text = res.content.flatMap((b) => (b.type === 'text' ? [b.text] : [])).join('').trim();
-      return { output: text };
-    } catch (err) {
-      throw toAppError(err);
-    }
-  },
+  run: async (c, { ai }) => ({ output: await completeText(ai, c.prompt, c.effort) }),
 });
 
 const httpStep = define({

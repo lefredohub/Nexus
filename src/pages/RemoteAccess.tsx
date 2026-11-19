@@ -228,7 +228,7 @@ export function ThisDevicePanel() {
       <SectionHeader title="Cet appareil" action={<Smartphone size={15} className="text-ink-4" />} />
       <p className="text-[13.5px] text-ink-2">
         Connecté à ton NEXUS en tant que <span className="text-ink">« {auth?.device?.name ?? 'appareil'} »</span>
-        {auth?.device ? `, relié ${relTime(auth.device.created_at)}` : ''}. La clé API, les sauvegardes et la gestion des appareils se règlent sur le Mac.
+        {auth?.device ? `, relié ${relTime(auth.device.created_at)}` : ''}. Le choix de l’IA, la clé API, les sauvegardes et la gestion des appareils se règlent sur le Mac.
       </p>
       <Button className="mt-4" variant="danger" size="sm" icon={<LogOut size={13} />} onClick={() => confirm('Déconnecter cet appareil ? Il faudra un nouveau code pour revenir.') && logout.mutate(undefined)}>
         Déconnecter cet appareil

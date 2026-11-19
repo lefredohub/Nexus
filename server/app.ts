@@ -16,6 +16,8 @@ import { AppError } from './lib/errors';
 import { localOnly, remoteGuard } from './security';
 import { PairingManager, pairDevice, verifySession, listDevices, revokeDevice, readCookie, sessionCookie, clearSessionCookie, SESSION_COOKIE } from './auth';
 import { enableTailscaleServe, type RemoteServer } from './remote';
+import { aiReadiness } from './ai/providers';
+import { ollamaPull, type OllamaDeps } from './ai/ollama';
 import * as S from '../shared/schemas';
 import * as tasks from './repos/tasks';
 import * as projects from './repos/projects';
@@ -49,6 +51,8 @@ export interface AppDeps {
   pairing?: PairingManager;
   /** Porte distante, pilotable depuis les Réglages du Mac. */
   remote?: RemoteServer;
+  /** Accès à Ollama (IA locale) ; injectable pour les tests. */
+  ollama?: OllamaDeps;
   /** Dossier des sauvegardes (data/backups). */
   backupDir?: string;
   secrets: SecretStore;
@@ -69,7 +73,7 @@ async function body<T extends z.ZodType>(c: Context, schema: T): Promise<z.outpu
 
 export function createApp(deps: AppDeps) {
   const { db } = deps;
-  const ai: AIDeps = { db, secrets: deps.secrets, makeClient: deps.makeClient };
+  const ai: AIDeps = { db, secrets: deps.secrets, makeClient: deps.makeClient, ollama: deps.ollama };
   const engine = { db, ai, fetch: deps.fetch };
   const mode = deps.mode ?? 'local';
   const pairing = deps.pairing ?? new PairingManager();
@@ -277,11 +281,37 @@ export function createApp(deps: AppDeps) {
   api.delete('/metric-entries/:id', (c) => (analytics.deleteMetricEntry(db, c.req.param('id')), c.json({ ok: true })));
 
   // ── IA ─────────────────────────────────────────────────────────────────────
-  api.get('/ai/status', (c) => {
+  api.get('/ai/status', async (c) => {
     const s = getSettings(db);
     const key = deps.secrets.status();
-    // Depuis un appareil distant, on n'expose même pas la version masquée de la clé.
-    return c.json({ key: mode === 'local' ? key : { ...key, masked: null }, model: s.ai_model, effort: s.ai_effort, allowWrites: s.ai_allow_writes, mode });
+    const ready = await aiReadiness(ai);
+    return c.json({
+      provider: ready.provider,
+      online: ready.online,
+      reason: ready.reason,
+      model: ready.model,
+      ollama: ready.ollama,
+      // Depuis un appareil distant, on n'expose même pas la version masquée de la clé.
+      key: mode === 'local' ? key : { ...key, masked: null },
+      effort: s.ai_effort,
+      allowWrites: s.ai_allow_writes,
+      mode,
+    });
+  });
+  /** Télécharge un modèle dans Ollama, avec la progression en direct (SSE). */
+  api.post('/ai/ollama/pull', macOnly, async (c) => {
+    const { model } = await body(c, z.object({ model: S.settingsPatch.shape.ollama_model.unwrap() }));
+    return streamSSE(c, async (stream) => {
+      const controller = new AbortController();
+      stream.onAbort(() => controller.abort());
+      try {
+        for await (const p of ollamaPull(ai.ollama ?? {}, model, controller.signal)) await stream.writeSSE({ event: 'progress', data: JSON.stringify(p) });
+        await stream.writeSSE({ event: 'done', data: JSON.stringify({ ok: true }) });
+      } catch (err) {
+        const e = err instanceof AppError ? err : toAppError(err);
+        await stream.writeSSE({ event: 'error', data: JSON.stringify({ code: e.code, message: e.message }) });
+      }
+    });
   });
   api.post('/ai/key', macOnly, async (c) => {
     const { apiKey } = await body(c, S.apiKeyInput);
@@ -289,8 +319,13 @@ export function createApp(deps: AppDeps) {
     return c.json(deps.secrets.status());
   });
   api.delete('/ai/key', macOnly, (c) => (deps.secrets.clearApiKey(), c.json(deps.secrets.status())));
-  /** Vérifie la clé via l'API Models (aucun token consommé). */
+  /** Vérifie l'IA : Ollama + modèle présents, ou clé Claude via l'API Models (aucun token consommé). */
   api.post('/ai/verify', async (c) => {
+    const ready = await aiReadiness(ai);
+    if (ready.provider === 'ollama') {
+      if (!ready.online) throw new AppError(400, 'ai_offline', ready.reason ?? 'IA locale indisponible');
+      return c.json({ ok: true, model: ready.model, name: `${ready.model} (local, Ollama ${ready.ollama?.version ?? ''})`.trim() });
+    }
     const client = getClient(ai);
     const model = getSettings(db).ai_model;
     try {

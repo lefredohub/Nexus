@@ -29,7 +29,20 @@ export type MetricWithEntries = ReturnType<typeof listMetrics>[number];
 export type ConversationView = ReturnType<typeof conversationView>;
 export type ConversationSummary = Conversation;
 export interface ActivityItem { id: string; kind: string; title: string; detail: string; actor: string; entity_kind: string | null; entity_id: string | null; created_at: string }
-export interface AIStatus { key: { configured: boolean; source: 'env' | 'file' | null; masked: string | null }; model: string; effort: string; allowWrites: boolean; mode?: 'local' | 'remote' }
+export interface AIStatus {
+  /** « ollama » = IA locale gratuite ; « anthropic » = Claude. */
+  provider: 'ollama' | 'anthropic';
+  /** L'IA est-elle utilisable maintenant ? */
+  online: boolean;
+  /** Raison si elle ne l'est pas. */
+  reason: string | null;
+  model: string;
+  ollama: { reachable: boolean; version: string | null; models: { name: string; size: number; parameter_size: string | null }[]; modelInstalled: boolean; recommended: string } | null;
+  key: { configured: boolean; source: 'env' | 'file' | null; masked: string | null };
+  effort: string;
+  allowWrites: boolean;
+  mode?: 'local' | 'remote';
+}
 export interface AuthStatus { mode: 'local' | 'remote'; authenticated: boolean; device: { id: string; name: string; created_at: string; last_seen_at: string } | null }
 export interface RemoteInfo {
   mode: 'off' | 'lan' | 'tailscale';

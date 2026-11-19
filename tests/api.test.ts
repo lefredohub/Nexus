@@ -79,6 +79,7 @@ describe('API', () => {
 
   it('l’IA sans clé répond par une erreur explicite, sans planter', async () => {
     const { call } = setup();
+    await call('/settings', { method: 'PATCH', body: { ai_provider: 'anthropic' } });
     const res = await call('/ai/briefing', { body: {} });
     expect(res.status).toBe(400);
     expect(((await res.json()) as { error: { code: string } }).error.code).toBe('no_api_key');

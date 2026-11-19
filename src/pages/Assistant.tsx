@@ -157,15 +157,15 @@ export function Assistant({ conversationId }: { conversationId?: string }) {
 
   // Question transmise depuis la palette de commandes.
   useEffect(() => {
-    if (qParam && newParam && status?.key.configured && autoSent.current !== qParam) {
+    if (qParam && newParam && status?.online && autoSent.current !== qParam) {
       autoSent.current = qParam;
       window.history.replaceState(null, '', '/ai');
       void send(qParam);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [qParam, newParam, status?.key.configured]);
+  }, [qParam, newParam, status?.online]);
 
-  const online = status?.key.configured;
+  const online = status?.online;
   const deleteConv = useAction((id: string) => api(`/conversations/${id}`, { method: 'DELETE' }), { success: 'Conversation supprimée' });
 
   return (
@@ -214,7 +214,7 @@ export function Assistant({ conversationId }: { conversationId?: string }) {
           <div className="min-w-0 flex-1">
             <div className="truncate text-[14px] font-medium">{view?.conversation.title ?? 'Nexus AI'}</div>
             <div className="font-mono text-[10.5px] text-ink-3">
-              {online ? `${status?.model} · effort ${status?.effort} · ${status?.allowWrites ? 'lecture + écriture' : 'lecture seule'}` : 'hors ligne — clé API requise'}
+              {online ? `${status?.model} · effort ${status?.effort} · ${status?.allowWrites ? 'lecture + écriture' : 'lecture seule'}` : `hors ligne — ${status?.reason ?? 'IA indisponible'}`}
             </div>
           </div>
           <Button size="sm" variant="ghost" icon={<Brain size={14} />} onClick={() => setMemoryOpen(true)}>
@@ -253,7 +253,7 @@ export function Assistant({ conversationId }: { conversationId?: string }) {
                     void send(input);
                   }
                 }}
-                placeholder={online ? 'Parle à NEXUS… (Maj+Entrée pour un retour à la ligne)' : 'Ajoute ta clé API dans Réglages pour activer NEXUS AI'}
+                placeholder={online ? 'Parle à NEXUS… (Maj+Entrée pour un retour à la ligne)' : 'IA hors ligne : voir Réglages → Intelligence artificielle'}
                 className="!min-h-[40px] flex-1 !border-0 !bg-transparent !shadow-none"
               />
               {streaming ? (
@@ -299,7 +299,7 @@ function Welcome({ online, onPick, onFill }: { online: boolean; onPick: (s: stri
         </div>
       ) : (
         <Button className="mt-6" variant="primary" onClick={() => navigate('/settings')}>
-          Configurer la clé API
+          Activer l’IA
         </Button>
       )}
     </div>

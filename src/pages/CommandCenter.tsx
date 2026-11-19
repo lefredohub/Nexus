@@ -242,7 +242,7 @@ function BriefingPanel() {
   const { data: status } = useApi<AIStatus>(['ai-status'], '/ai/status');
   const { data: briefing, isLoading } = useApi<StoredBriefing | null>(['briefing'], '/ai/briefing');
   const generate = useAction((force: boolean) => api<StoredBriefing>('/ai/briefing', { body: { force } }));
-  const online = status?.key.configured;
+  const online = status?.online;
   const thinking = generate.isPending;
   const b = briefing?.content;
 
@@ -265,7 +265,7 @@ function BriefingPanel() {
         <div className="min-w-0 flex-1">
           {!online ? (
             <div>
-              <p className="text-[15px] leading-relaxed text-ink-2">Le noyau IA est hors ligne. Connecte ta clé Anthropic pour l’activer.</p>
+              <p className="text-[15px] leading-relaxed text-ink-2">Le noyau IA est hors ligne. Active l’IA locale gratuite (Ollama) ou Claude dans Réglages.</p>
               <ul className="mt-4 space-y-2.5">
                 {[
                   ['Briefing quotidien', 'ce qui compte aujourd’hui, ce qui dérape'],

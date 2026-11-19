@@ -64,7 +64,7 @@ export function Shell({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  const online = ai?.key.configured;
+  const online = ai?.online;
 
   return (
     <div className="relative flex h-full">

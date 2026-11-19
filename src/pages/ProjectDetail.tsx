@@ -244,7 +244,7 @@ function AnalysisPanel({ p }: { p: ProjectDetail }) {
   const apply = useAction((body: { tasks: { title: string; priority: number }[]; risks: { title: string; severity: string; mitigation: string }[] }) => api(`/projects/${p.id}/apply`, { body }), { success: 'Ajouté au projet' });
   const a = p.analysis?.analysis;
   const [picked, setPicked] = useState<Set<string>>(new Set());
-  const online = status?.key.configured;
+  const online = status?.online;
   const running = analyze.isPending;
 
   const togglePick = (k: string) => setPicked((s) => {
@@ -269,7 +269,7 @@ function AnalysisPanel({ p }: { p: ProjectDetail }) {
       />
       {!online ? (
         <div className="text-[13px] text-ink-2">
-          Connecte Claude pour qu’il audite ce projet et en révèle les faiblesses.{' '}
+          Active l’IA pour qu’elle audite ce projet et en révèle les faiblesses.{' '}
           <Link to="/settings" className="text-signal">
             Activer l’IA →
           </Link>

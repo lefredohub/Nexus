@@ -3,8 +3,8 @@
  *
  * Fonctionnement d'un tour :
  *  1. on enregistre le message de l'utilisateur (+ contexte) ;
- *  2. on envoie tout l'historique à Claude en streaming ;
- *  3. si Claude demande des outils, on les exécute localement, on enregistre
+ *  2. on envoie tout l'historique à l'IA (Ollama en local, ou Claude) en streaming ;
+ *  3. si l'IA demande des outils, on les exécute localement, on enregistre
  *     les résultats et on relance — jusqu'à une réponse finale ;
  *  4. chaque étape est diffusée à l'interface sous forme d'événements.
  *
@@ -14,13 +14,12 @@
  * son raisonnement d'un tour à l'autre et au cache de prompt de fonctionner.
  */
 import type Anthropic from '@anthropic-ai/sdk';
-import { getClient, baseParams, toAppError, type AIDeps } from './client';
+import { toAppError, type AIDeps } from './client';
+import { activeModel, aiReadiness, modelTurn } from './providers';
 import { SYSTEM_PROMPT, initialContext, turnContext } from './prompts';
 import { toolDefinitions, executeTool, type ToolEffect } from './tools';
 import { getSettings } from '../repos/settings';
 import { appendMessage, createConversation, getConversation, listMessages, renameConversation, type StoredMessage } from '../repos/conversations';
-
-type BetaParam = Anthropic.Beta.BetaMessageParam;
 
 export type ChatEvent =
   | { type: 'start'; conversationId: string; title: string }
@@ -35,11 +34,6 @@ export type ChatEvent =
 export interface Usage { input_tokens: number; output_tokens: number; cache_read_input_tokens: number; cache_creation_input_tokens: number }
 
 const MAX_TOOL_ROUNDS = 12;
-const MAX_TOKENS = 32000;
-
-function toApiMessages(stored: StoredMessage[]): BetaParam[] {
-  return stored.map((m) => ({ role: m.role, content: m.content }) as BetaParam);
-}
 
 /**
  * Si un tour précédent s'est interrompu entre une demande d'outil et sa
@@ -72,17 +66,18 @@ export async function* runChat(
   input: { conversationId?: string | null; message: string; voice?: boolean },
   signal?: AbortSignal,
 ): AsyncGenerator<ChatEvent> {
-  let client: Anthropic;
-  try {
-    client = getClient(deps);
-  } catch (err) {
-    const e = toAppError(err);
-    yield { type: 'error', code: e.code, message: e.message };
+  // IA prête ? (clé API pour Claude ; Ollama lancé + modèle téléchargé pour l'IA locale)
+  const ready = await aiReadiness(deps);
+  if (!ready.online) {
+    yield {
+      type: 'error',
+      code: ready.provider === 'anthropic' ? 'no_api_key' : 'ai_offline',
+      message: `${ready.reason ?? 'IA indisponible.'} ${ready.provider === 'anthropic' ? 'Ajoute ta clé dans Réglages.' : 'Voir Réglages → Intelligence artificielle.'}`,
+    };
     return;
   }
 
-  const settings = getSettings(deps.db);
-  const conversation = input.conversationId ? getConversation(deps.db, input.conversationId) : createConversation(deps.db, settings.ai_model, titleFrom(input.message));
+  const conversation = input.conversationId ? getConversation(deps.db, input.conversationId) : createConversation(deps.db, activeModel(deps), titleFrom(input.message));
   yield { type: 'start', conversationId: conversation.id, title: conversation.title };
 
   let history = repairDanglingToolUse(deps, conversation.id, listMessages(deps.db, conversation.id));
@@ -106,34 +101,22 @@ export async function* runChat(
 
   try {
     for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
-      const params = baseParams(deps);
-      const stream = client.beta.messages.stream(
-        {
-          ...params,
-          max_tokens: MAX_TOKENS,
-          system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
-          tools,
-          messages: toApiMessages(history),
-          cache_control: { type: 'ephemeral' },
-        },
-        { signal },
-      );
-
-      for await (const event of stream) {
-        if (event.type === 'content_block_delta') {
-          if (event.delta.type === 'text_delta') yield { type: 'text', delta: event.delta.text };
-          else if (event.delta.type === 'thinking_delta') yield { type: 'thinking', delta: event.delta.thinking };
-        }
+      // Un tour de modèle (Claude ou Ollama) : texte et réflexion diffusés au fil de l'eau.
+      const turn = modelTurn(deps, { system: SYSTEM_PROMPT, history, tools, signal });
+      let step = await turn.next();
+      while (!step.done) {
+        yield step.value;
+        step = await turn.next();
       }
-      const message = await stream.finalMessage();
+      const message = step.value;
       stopReason = message.stop_reason;
       usage.input_tokens += message.usage.input_tokens ?? 0;
       usage.output_tokens += message.usage.output_tokens ?? 0;
       usage.cache_read_input_tokens += message.usage.cache_read_input_tokens ?? 0;
       usage.cache_creation_input_tokens += message.usage.cache_creation_input_tokens ?? 0;
 
-      const text = message.content.flatMap((b) => (b.type === 'text' ? [b.text] : [])).join('');
-      const toolUses = message.content.filter((b): b is Anthropic.Beta.BetaToolUseBlock => b.type === 'tool_use');
+      const text = message.content.flatMap((b) => (b.type === 'text' ? [String(b.text)] : [])).join('');
+      const toolUses = message.content.filter((b) => b.type === 'tool_use') as unknown as { id: string; name: string; input: unknown }[];
       const assistant = appendMessage(deps.db, {
         conversation_id: conversation.id,
         role: 'assistant',
@@ -233,6 +216,7 @@ export function conversationView(deps: AIDeps, conversationId: string) {
     for (const b of m.content as { type: string; text?: string; thinking?: string; id?: string; name?: string; input?: unknown }[]) {
       if (b.type === 'text' && b.text) turn.parts.push({ type: 'text', text: b.text });
       else if (b.type === 'thinking' && b.thinking) turn.parts.push({ type: 'thinking', text: b.thinking });
+      else if (b.type === 'local_thinking' && b.text) turn.parts.push({ type: 'thinking', text: b.text });
       else if (b.type === 'tool_use') turn.parts.push({ type: 'tool', id: b.id!, name: b.name!, input: b.input, ...results.get(b.id!) });
     }
   }

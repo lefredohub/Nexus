@@ -2,6 +2,10 @@ import { type DB, all, run } from '../db/client';
 
 export interface Settings {
   user_name: string;
+  /** « ollama » : IA locale gratuite sur le Mac. « anthropic » : Claude (payant, clé API). */
+  ai_provider: 'anthropic' | 'ollama';
+  /** Modèle Ollama utilisé quand ai_provider = « ollama ». */
+  ollama_model: string;
   ai_model: string;
   ai_effort: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
   ai_allow_writes: boolean;
@@ -13,6 +17,8 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   user_name: '',
+  ai_provider: 'ollama',
+  ollama_model: 'qwen3:8b',
   ai_model: 'claude-opus-5-5',
   ai_effort: 'medium',
   ai_allow_writes: true,

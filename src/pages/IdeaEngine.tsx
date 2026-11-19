@@ -151,7 +151,7 @@ function IdeaDetail({ idea, onGone }: { idea: Idea; onGone: () => void }) {
   const archive = useAction(() => api(`/ideas/${idea.id}`, { method: 'PATCH', body: { status: 'archived' } }), { success: 'Idée archivée' });
   const del = useAction(() => api(`/ideas/${idea.id}`, { method: 'DELETE' }), { success: 'Idée supprimée' });
   const a = idea.analysis;
-  const online = status?.key.configured;
+  const online = status?.online;
 
   return (
     <Panel className="p-5 md:p-6">
@@ -239,7 +239,7 @@ function IdeaDetail({ idea, onGone }: { idea: Idea; onGone: () => void }) {
             </Button>
           ) : (
             <Link to="/settings" className="mt-3 inline-block text-[13px] text-signal">
-              Configurer la clé API →
+              Activer l’IA →
             </Link>
           )}
         </div>

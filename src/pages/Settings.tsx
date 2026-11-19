@@ -1,25 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Check, Download, HardDrive, KeyRound, ShieldCheck, Trash2, AlertTriangle, Keyboard } from 'lucide-react';
+import { Check, Download, HardDrive, Trash2, AlertTriangle, Keyboard } from 'lucide-react';
 import { api, useAction, useApi } from '../lib/api';
 import type { AIStatus, Settings } from '../lib/types';
-import { Badge, Button, Field, Input, Kbd, PageHeader, Panel, SectionHeader, Select, Toggle } from '../components/ui';
-import { Core } from '../components/Core';
+import { Button, Field, Input, Kbd, PageHeader, Panel, SectionHeader, Select } from '../components/ui';
 import { toast } from '../components/Toast';
 import { RemoteAccessPanel, ThisDevicePanel } from './RemoteAccess';
-
-const MODELS = [
-  { id: 'claude-opus-5-5', label: 'Claude Opus 5.5', hint: 'Recommandé · raisonnement solide, coût modéré' },
-  { id: 'claude-sonnet-5-5', label: 'Claude Sonnet 5.5', hint: 'Plus rapide et moins cher' },
-  { id: 'claude-haiku-5-5', label: 'Claude Haiku 5.5', hint: 'Très économique, analyses plus légères' },
-  { id: 'claude-fable-5-2', label: 'Claude Fable 5.2', hint: 'Le plus capable · nettement plus cher' },
-];
-const EFFORTS = [
-  { id: 'low', label: 'Rapide' },
-  { id: 'medium', label: 'Équilibré' },
-  { id: 'high', label: 'Approfondi' },
-  { id: 'xhigh', label: 'Très approfondi' },
-  { id: 'max', label: 'Maximal' },
-];
+import { AISettingsPanel } from './AISettings';
 
 export function SettingsPage() {
   const { data: s } = useApi<Settings>(['settings'], '/settings');
@@ -27,16 +13,12 @@ export function SettingsPage() {
   const isMac = ai?.mode !== 'remote';
   const [name, setName] = useState('');
   const [currency, setCurrency] = useState('EUR');
-  const [key, setKey] = useState('');
   const [confirmText, setConfirmText] = useState('');
   useEffect(() => {
     if (s) (setName(s.user_name), setCurrency(s.currency));
   }, [s]);
 
   const patch = useAction((body: Partial<Settings>) => api('/settings', { method: 'PATCH', body }), { success: 'Réglage enregistré' });
-  const saveKey = useAction(() => api('/ai/key', { body: { apiKey: key } }), { success: 'Clé enregistrée localement' });
-  const removeKey = useAction(() => api('/ai/key', { method: 'DELETE' }), { success: 'Clé supprimée' });
-  const verify = useAction(() => api<{ ok: boolean; model: string; name: string }>('/ai/verify', { body: {} }), { success: (r) => `Connexion réussie · ${r.name}` });
   const backup = useAction(() => api<{ file: string }>('/backup', { body: {} }), { success: (r) => `Sauvegarde créée : ${r.file.split('/').pop()}` });
   const reset = useAction(() => api<{ backup: string }>('/reset', { body: { confirm: confirmText } }), { success: 'Espace réinitialisé (une sauvegarde a été créée)' });
 
@@ -44,81 +26,11 @@ export function SettingsPage() {
     <div className="mx-auto max-w-[900px] px-4 py-6 md:px-8 md:py-9">
       <PageHeader eyebrow="Système" title="Réglages" subtitle="Tout est stocké localement, sur ta machine." />
       <div className="space-y-4">
+        {/* IA : locale (Ollama) ou Claude */}
+        <AISettingsPanel isMac={isMac} />
+
         {/* Accès depuis l'iPhone : réglable seulement sur le Mac */}
         {isMac ? <RemoteAccessPanel /> : <ThisDevicePanel />}
-
-        {/* IA */}
-        <Panel hud className="p-5 md:p-6">
-          <SectionHeader title="Intelligence artificielle" action={<Core size={26} state={ai?.key.configured ? 'idle' : 'offline'} />} />
-          <div className="mb-5 flex flex-wrap items-center gap-3 rounded-xl border border-line bg-white/[0.02] p-4">
-            <KeyRound size={16} className="text-ink-3" />
-            <div className="min-w-0 flex-1">
-              <div className="text-[13.5px]">Clé API Anthropic</div>
-              <div className="font-mono text-[11.5px] text-ink-3">
-                {!isMac ? 'gérée depuis le Mac' : ai?.key.configured ? `${ai.key.masked} · ${ai.key.source === 'env' ? 'depuis la variable d’environnement' : 'stockée dans data/secrets.json'}` : 'non configurée'}
-              </div>
-            </div>
-            {ai?.key.configured ? <Badge tone="ok">Active</Badge> : <Badge>Hors ligne</Badge>}
-            {isMac && ai?.key.configured && (
-              <Button size="sm" icon={<ShieldCheck size={13} />} loading={verify.isPending} onClick={() => verify.mutate(undefined)}>
-                Tester
-              </Button>
-            )}
-            {isMac && ai?.key.source === 'file' && (
-              <Button size="sm" variant="ghost" onClick={() => confirm('Supprimer la clé enregistrée ?') && removeKey.mutate(undefined)}>
-                Supprimer
-              </Button>
-            )}
-          </div>
-          {isMac && ai?.key.source !== 'env' && (
-            <form
-              className="mb-6"
-              onSubmit={(e) => {
-                e.preventDefault();
-                saveKey.mutate(undefined, { onSuccess: () => setKey('') });
-              }}
-            >
-              <Field label={ai?.key.configured ? 'Remplacer la clé' : 'Ajouter ta clé'} hint="Crée une clé sur console.anthropic.com. Elle reste sur ta machine (fichier protégé, jamais renvoyé à l’interface) et n’est utilisée que lorsque tu sollicites l’IA.">
-                <div className="flex gap-2">
-                  <Input type="password" autoComplete="off" value={key} onChange={(e) => setKey(e.target.value)} placeholder="sk-ant-…" className="font-mono" />
-                  <Button type="submit" variant="primary" disabled={!key.startsWith('sk-ant-')} loading={saveKey.isPending}>
-                    Enregistrer
-                  </Button>
-                </div>
-              </Field>
-            </form>
-          )}
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Modèle" hint={MODELS.find((m) => m.id === s?.ai_model)?.hint}>
-              <Select value={s?.ai_model ?? ''} onChange={(e) => patch.mutate({ ai_model: e.target.value })}>
-                {MODELS.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.label}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <Field label="Effort de réflexion" hint="Plus d’effort = réponses plus fouillées, mais plus lentes et plus coûteuses.">
-              <Select value={s?.ai_effort ?? 'medium'} onChange={(e) => patch.mutate({ ai_effort: e.target.value as Settings['ai_effort'] })}>
-                {EFFORTS.map((x) => (
-                  <option key={x.id} value={x.id}>
-                    {x.label}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          </div>
-          <div className="mt-5 flex items-start gap-4 rounded-xl border border-line p-4">
-            <Toggle checked={s?.ai_allow_writes ?? true} onChange={(v) => patch.mutate({ ai_allow_writes: v })} label="Autoriser l’IA à modifier mes données" />
-            <div>
-              <div className="text-[13.5px]">Autoriser NEXUS AI à agir</div>
-              <div className="mt-0.5 text-[12.5px] text-ink-3">Créer des tâches et projets, mémoriser, relier des éléments, enregistrer des données. Désactivé : l’IA peut seulement lire et proposer. Chaque action reste visible dans la conversation et le flux d’activité.</div>
-            </div>
-          </div>
-          <p className="mt-4 text-[12px] leading-relaxed text-ink-3">
-            Coûts : chaque message, analyse ou briefing consomme des tokens facturés sur ton compte Anthropic. Aucun appel n’est fait sans action de ta part (le bouton « Tester » utilise l’API Models, gratuite).
-          </p>
-        </Panel>
 
         {/* Profil */}
         <Panel className="p-5 md:p-6">

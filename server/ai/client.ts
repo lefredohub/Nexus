@@ -17,6 +17,8 @@ export interface AIDeps {
   secrets: SecretStore;
   /** Injectable pour les tests (client simulé). */
   makeClient?: (apiKey: string) => Anthropic;
+  /** Accès à Ollama (IA locale) ; `fetch` injectable pour les tests. */
+  ollama?: import('./ollama').OllamaDeps;
 }
 
 export function getClient(deps: AIDeps): Anthropic {

@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import Anthropic from '@anthropic-ai/sdk';
-import { testDb, testSecrets } from './helpers';
+import { testDb as baseDb, testSecrets } from './helpers';
 import { runChat, conversationView, type ChatEvent } from '../server/ai/agent';
 import { executeTool, toolDefinitions, TOOLS } from '../server/ai/tools';
 import { toAppError } from '../server/ai/client';
@@ -14,6 +14,13 @@ import { listMessages, appendMessage, createConversation } from '../server/repos
 import { updateSettings } from '../server/repos/settings';
 import { listMemories } from '../server/repos/notes';
 import { SYSTEM_PROMPT } from '../server/ai/prompts';
+
+/** Ces tests vérifient le chemin Claude (Anthropic) ; l'IA locale a ses propres tests (ollama.test.ts). */
+function testDb() {
+  const db = baseDb();
+  updateSettings(db, { ai_provider: 'anthropic' });
+  return db;
+}
 
 type Block = Record<string, unknown>;
 interface Scripted { content: Block[]; stop_reason: string }

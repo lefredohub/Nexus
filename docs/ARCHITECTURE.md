@@ -136,18 +136,25 @@ Dans `server/ai/tools.ts`, ajoute un `def({...})` : nom, description (c'est ce q
 ### Ajouter une étape d'automatisation (ex. Slack, Notion, un autre agent)
 Dans `server/automations/steps.ts`, crée un `define({...})` avec un schéma de configuration, une liste de champs (le formulaire de l'interface est généré automatiquement) et une fonction `run`, puis ajoute-le à `STEP_TYPES`. Les secrets nécessaires iront dans `SecretStore`.
 
-### Ajouter une intégration de données (ex. Strava)
-Les tables `transactions`, `workouts` et `metric_entries` ont une colonne `source` et un `external_id` avec contrainte d'unicité : une synchronisation peut être relancée sans créer de doublons. Implémente la synchronisation dans `server/integrations/`, enregistre-la dans `INTEGRATIONS`, et appelle les fonctions `createWorkout(db, …, 'strava', idStrava)` existantes.
+### Intégrations existantes (`server/integrations/`)
+- **`common.ts`** : `importWorkout` (anti-doublons : même source + identifiant externe, ou séance d'une autre source le même jour avec type, durée ±12 % et distance ±5 % proches), `setDailyValue` (une valeur par jour et par source pour les métriques : renvoyer remplace), état des synchros (`integration_state`).
+- **`strava.ts`** : OAuth 2 (état anti-falsification à usage unique, retour forcé sur `localhost`), jetons renouvelés automatiquement, import paginé des activités (180 jours au premier passage).
+- **`menhir.ts`** : connexion Supabase avec le compte Menhir (mot de passe utilisé une fois, jeton de renouvellement tourné à chaque synchro), lecture seule de la ligne `fitlog_data` ; conversion des sorties (`runs`) et séances de muscu (`h`, tonnage = charge × répétitions hors cardio).
+- **`health.ts`** + jetons `api_tokens` : le Raccourci iPhone envoie `POST /api/ingest/health` avec `Authorization: Bearer nxs_…`. Ces jetons ont un périmètre unique (`health:write`), seule leur empreinte est stockée, et la route est la seule de la porte distante à ne pas exiger d'appairage.
+- **`scheduler.ts`** : synchro Strava et Menhir 30 s après le démarrage puis toutes les heures. Les secrets (jetons Strava, session Menhir) sont dans `data/secrets.json` (permissions 600).
+
+Pour en ajouter une : un module dans ce dossier qui s'appuie sur `importWorkout` / `setDailyValue`, des routes dans `server/app.ts` (configuration en `macOnly`), une entrée dans `registry.ts`, une carte dans `src/pages/Sources.tsx`.
 
 ## Tests
 
-`npm test` lance 74 tests (Vitest) sur les parties critiques :
+`npm test` lance 83 tests (Vitest) sur les parties critiques :
 - **données** : migrations, progression et santé des projets, objectifs, conversion idée → projet, liens, graphe, recherche plein texte, séries d'habitudes, import CSV sans doublons ;
 - **IA** (avec un client Claude simulé, sans réseau ni coût) : boucle d'outils, persistance, historique en ajout seul, mode lecture seule, réparation des tours interrompus, entrées tronquées, refus, traduction des erreurs ;
 - **automatisations** : gabarits, simulation sans effet, conditions, erreurs, appels HTTP, planification, événements sans boucle ;
 - **API** : protections de sécurité, validation, parcours complet, gestion de la clé, réinitialisation avec sauvegarde ;
 - **accès distant** : appairage, code à usage unique et expiration, anti force brute, révocation, actions réservées au Mac, anti-CSRF ;
 - **voix** : nettoyage du Markdown pour l'oral, découpage en phrases, consigne vocale ;
+- **intégrations** (faux serveurs Strava et Supabase) : anti-doublons entre sources, OAuth et état à usage unique, renouvellement des jetons, pagination, conversion course/muscu/tonnage, jetons Santé limités et révocables, valeurs tolérantes (« 72,4 kg ») ;
 - **IA locale** (faux serveur Ollama) : détection, modèle manquant, boucle d'outils, format des messages, modèles sans outils, passage à Claude en cours de conversation, sorties structurées avec second essai, téléchargement.
 
 ### Ce qui a été vérifié pendant la construction, et ce qui ne l'a pas été
@@ -157,6 +164,8 @@ Les tables `transactions`, `workouts` et `metric_entries` ont une colonne `sourc
 - ⚠️ **Non testé : appels réels à l'API Anthropic** (aucune clé disponible pendant la construction, et pour ne rien dépenser sans ton accord). Le format des requêtes suit la documentation officielle du SDK, mais le premier vrai test se fera avec ta clé : commence par « Tester » dans Réglages (gratuit), puis un premier message court.
 - ✅ Accès iPhone simulé (Chromium en profil « iPhone 15 Pro ») sur le serveur de production : appairage par code et par QR, refus d'un code faux, confirmation en direct côté Mac, Command Center et Jarvis sur iPhone, actions sensibles masquées, révocation. Boucle vocale complète avec micro et voix **simulés** : écoute, transcription en direct, réponse lue phrase par phrase sans Markdown, réécoute automatique, retour au repos.
 - ✅ IA locale de bout en bout avec un **faux serveur Ollama** : détection automatique au lancement, téléchargement du modèle avec progression, test, chat avec appel d'outil, briefing, Jarvis.
+- ✅ Sur le serveur réel : enregistrement de l'application Strava depuis l'interface et redirection vers la page d'autorisation Strava ; jeton Santé créé dans l'interface puis requête « façon Raccourci » sur la porte iPhone, mesures enregistrées, refus sans jeton.
+- ⚠️ **Non testés avec les vrais services** : Strava (OAuth et API), Menhir/Supabase et le Raccourci iPhone n'ont pas pu être appelés depuis l'environnement de construction. Les formats suivent la documentation de Strava, le code de Menhir et l'API Supabase.
 - ⚠️ **Non testé avec un vrai Ollama ni un vrai modèle** (les serveurs d'Ollama sont inaccessibles depuis l'environnement de construction) : le format suit la documentation de l'API Ollama ; la qualité réelle des réponses (français, choix des outils) dépend du modèle.
 - ⚠️ **Non testé sur un vrai iPhone** ni avec un vrai micro : la qualité de la reconnaissance et des voix dépend d'iOS. **Non testés** : Tailscale réel (l'activation HTTPS lance `tailscale serve --bg 4318`), le démarrage automatique `launchd` et `NEXUS.command` (scripts vérifiés syntaxiquement, plist validé, mais jamais exécutés sur un Mac).
 - ⚠️ Développé et testé sous Linux. Le code n'utilise rien de spécifique à un système, mais le premier lancement sur ton Mac reste à faire.

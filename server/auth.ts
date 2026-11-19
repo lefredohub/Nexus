@@ -134,3 +134,41 @@ export function sessionCookie(token: string, secure: boolean): string {
 export function clearSessionCookie(): string {
   return `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
 }
+
+// ─── Jetons d'accès limités (Raccourci iPhone → Apple Santé) ─────────────────
+// Contrairement à un appareil appairé (accès complet), un jeton n'ouvre QU'UNE
+// porte précise (« scope ») : le Raccourci Santé peut envoyer des mesures, rien d'autre.
+
+export type TokenScope = 'health:write';
+
+export interface ApiToken {
+  id: string;
+  name: string;
+  scope: TokenScope;
+  created_at: string;
+  last_used_at: string | null;
+}
+
+export function createApiToken(db: DB, name: string, scope: TokenScope): { token: string; info: ApiToken } {
+  const token = `nxs_${randomBytes(24).toString('base64url')}`;
+  const id = newId('tok');
+  run(db, 'INSERT INTO api_tokens (id, name, token_hash, scope, created_at) VALUES (:id, :name, :h, :scope, :now)', { id, name: name.slice(0, 60), h: hash(token), scope, now: nowISO() });
+  return { token, info: get<ApiToken>(db, 'SELECT id, name, scope, created_at, last_used_at FROM api_tokens WHERE id = :id', { id })! };
+}
+
+/** Vérifie un jeton « Bearer » pour un périmètre donné. */
+export function verifyApiToken(db: DB, authorization: string | undefined, scope: TokenScope): ApiToken | null {
+  const m = authorization?.match(/^Bearer\s+(nxs_[A-Za-z0-9_-]{20,})$/);
+  if (!m) return null;
+  const t = get<ApiToken>(db, 'SELECT id, name, scope, created_at, last_used_at FROM api_tokens WHERE token_hash = :h AND revoked_at IS NULL AND scope = :scope', { h: hash(m[1]), scope });
+  if (t) run(db, 'UPDATE api_tokens SET last_used_at = :now WHERE id = :id', { id: t.id, now: nowISO() });
+  return t ?? null;
+}
+
+export function listApiTokens(db: DB): ApiToken[] {
+  return all<ApiToken>(db, 'SELECT id, name, scope, created_at, last_used_at FROM api_tokens WHERE revoked_at IS NULL ORDER BY created_at DESC');
+}
+
+export function revokeApiToken(db: DB, id: string) {
+  run(db, 'UPDATE api_tokens SET revoked_at = :now WHERE id = :id', { id, now: nowISO() });
+}

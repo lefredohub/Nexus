@@ -323,6 +323,32 @@ const MIGRATIONS: string[] = [
     revoked_at TEXT
   );
   `,
+
+  // ── v3 : intégrations (Strava, Menhir, Apple Santé) ──────────────────────
+  `
+  -- Identifiant stable d'une métrique alimentée automatiquement (ex. « health.steps »).
+  ALTER TABLE metrics ADD COLUMN key TEXT;
+  CREATE UNIQUE INDEX metrics_key ON metrics(key) WHERE key IS NOT NULL;
+
+  -- Jetons d'accès limités (ex. Raccourci iPhone qui envoie les données Santé).
+  -- Seule l'empreinte SHA-256 est stockée ; le périmètre (scope) limite ce que le jeton permet.
+  CREATE TABLE api_tokens (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    token_hash TEXT NOT NULL UNIQUE,
+    scope TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    last_used_at TEXT,
+    revoked_at TEXT
+  );
+
+  -- État de chaque intégration (dernière synchro, compteurs, dernière erreur).
+  CREATE TABLE integration_state (
+    id TEXT PRIMARY KEY,
+    data TEXT NOT NULL DEFAULT '{}',
+    updated_at TEXT NOT NULL
+  );
+  `,
 ];
 
 export function migrate(db: DatabaseSync): void {

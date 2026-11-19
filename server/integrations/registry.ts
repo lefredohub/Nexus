@@ -5,9 +5,9 @@
  * metric_entries) avec sa propre `source` et un `external_id` stable : une
  * resynchronisation ne crée jamais de doublons.
  *
- * Disponible aujourd'hui : import CSV de relevés bancaires.
- * Pour en ajouter une (ex. Strava) : implémente `IntegrationProvider`, puis
- * ajoute-la à INTEGRATIONS. Les secrets (jetons OAuth…) iront dans SecretStore.
+ * Disponibles : Strava (strava.ts), Menhir (menhir.ts), Apple Santé (health.ts), CSV bancaire.
+ * Pour en ajouter une : un module dans ce dossier (voir common.ts pour l'import sans
+ * doublons), des routes dans server/app.ts, une entrée ici. Les secrets vont dans SecretStore.
  */
 export interface IntegrationProvider {
   id: string;
@@ -18,8 +18,9 @@ export interface IntegrationProvider {
 }
 
 export const INTEGRATIONS: IntegrationProvider[] = [
+  { id: 'strava', name: 'Strava', domain: 'sport', description: 'Tes activités Strava importées automatiquement toutes les heures.', status: 'available' },
+  { id: 'menhir', name: 'Menhir', domain: 'sport', description: 'Tes sorties de course et séances de muscu de Menhir, en lecture seule.', status: 'available' },
+  { id: 'apple-health', name: 'Apple Santé', domain: 'health', description: 'Pas, sommeil, poids, FC au repos et calories, envoyés chaque soir par un Raccourci iPhone.', status: 'available' },
   { id: 'csv-bank', name: 'Relevé bancaire (CSV)', domain: 'finance', description: 'Importe les opérations exportées depuis ta banque. Les doublons sont détectés automatiquement.', status: 'available' },
-  { id: 'strava', name: 'Strava', domain: 'sport', description: 'Synchronisation des activités sportives via l’API Strava (OAuth).', status: 'planned' },
-  { id: 'apple-health', name: 'Apple Santé (export)', domain: 'health', description: 'Import de l’export XML d’Apple Santé (pas, sommeil, poids).', status: 'planned' },
   { id: 'open-banking', name: 'Open Banking', domain: 'finance', description: 'Connexion bancaire directe via un agrégateur DSP2.', status: 'planned' },
 ];

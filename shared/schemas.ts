@@ -298,3 +298,42 @@ export const pairInput = z.object({
   code: z.string().trim().regex(/^\d{6}$/, 'Le code contient 6 chiffres'),
   name: z.string().trim().max(60).default(''),
 });
+
+// ─── Intégrations ────────────────────────────────────────────────────────────
+
+/**
+ * Nombre tolérant : le Raccourci iPhone peut envoyer « 72,4 », « 7 856 », « 72,4 kg »
+ * ou un vrai nombre. Vide → absent.
+ */
+const looseNumber = z.preprocess((v) => {
+  if (v === null || v === undefined || v === '') return undefined;
+  if (typeof v === 'number') return v;
+  const m = String(v).replace(/[\s\u00a0\u202f]/g, '').replace(',', '.').match(/-?\d+(\.\d+)?/);
+  return m ? Number(m[0]) : undefined;
+}, z.number().finite().nonnegative().optional());
+
+export const healthIngest = z.object({
+  /** Jour concerné (défaut : aujourd'hui). Accepte aussi une date-heure ISO. */
+  date: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}/, 'Date AAAA-MM-JJ attendue').transform((d) => d.slice(0, 10)).optional(),
+  steps: looseNumber,
+  sleep_hours: looseNumber,
+  sleep_minutes: looseNumber,
+  weight_kg: looseNumber,
+  resting_hr: looseNumber,
+  active_kcal: looseNumber,
+  workouts: z
+    .array(z.object({ type: z.string().max(80), start: z.string().max(40), duration_min: looseNumber, distance_km: looseNumber }))
+    .max(50)
+    .optional(),
+});
+export type HealthIngest = z.infer<typeof healthIngest>;
+
+export const stravaAppInput = z.object({
+  clientId: z.string().trim().regex(/^\d{3,12}$/, 'Le Client ID Strava est un nombre'),
+  clientSecret: z.string().trim().regex(/^[a-f0-9]{40}$/i, 'Le Client Secret Strava fait 40 caractères (chiffres et lettres a-f)'),
+});
+
+export const menhirLoginInput = z.object({
+  email: z.string().trim().email('E-mail invalide'),
+  password: z.string().min(1, 'Mot de passe requis').max(200),
+});

@@ -92,13 +92,15 @@ export function listWorkouts(db: DB, opts: { from?: string; limit?: number } = {
   });
 }
 
-export function createWorkout(db: DB, input: z.input<typeof workoutInput>, actor: Actor = 'user', source = 'manual', externalId: string | null = null): Workout {
+export function createWorkout(db: DB, input: z.input<typeof workoutInput>, actor: Actor = 'user', source = 'manual', externalId: string | null = null, opts: { silent?: boolean } = {}): Workout {
   const d = workoutInput.parse(input);
   const id = newId('wkt');
   run(db, 'INSERT INTO workouts (id, date, type, duration_min, distance_km, intensity, notes, source, external_id, created_at) VALUES (:id, :date, :type, :duration_min, :distance_km, :intensity, :notes, :source, :external_id, :now)', {
     id, ...d, distance_km: d.distance_km ?? null, source, external_id: externalId, now: nowISO(),
   });
   const w = get<Workout>(db, 'SELECT * FROM workouts WHERE id = :id', { id })!;
+  // Import en masse (Strava, Menhir…) : pas une ligne d'activité par séance, un résumé suffit.
+  if (opts.silent) return w;
   logActivity(db, { kind: 'workout.logged', title: `Séance : ${d.type} · ${Math.round(d.duration_min)} min`, detail: d.distance_km ? `${d.distance_km} km` : '', actor });
   emitEvent('workout.logged', { workout: w });
   return w;

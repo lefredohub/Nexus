@@ -21,7 +21,7 @@ export interface KeyStatus {
 export class SecretStore {
   constructor(private file: string) {}
 
-  private readFile(): { anthropicApiKey?: string } {
+  private readFile(): { anthropicApiKey?: string; integrations?: Record<string, unknown> } {
     if (!existsSync(this.file)) return {};
     try {
       return JSON.parse(readFileSync(this.file, 'utf8'));
@@ -50,6 +50,27 @@ export class SecretStore {
     mkdirSync(dirname(this.file), { recursive: true });
     writeFileSync(this.file, JSON.stringify({ ...this.readFile(), anthropicApiKey: key }, null, 2), { mode: 0o600 });
     chmodSync(this.file, 0o600);
+  }
+
+  // ─── Secrets des intégrations (jetons Strava, session Menhir…) ─────────────
+  // Même fichier protégé (permissions 600), jamais renvoyé à l'interface.
+
+  getSecret<T = unknown>(name: string): T | null {
+    return (this.readFile().integrations?.[name] as T | undefined) ?? null;
+  }
+
+  setSecret(name: string, value: unknown) {
+    const cur = this.readFile();
+    mkdirSync(dirname(this.file), { recursive: true });
+    writeFileSync(this.file, JSON.stringify({ ...cur, integrations: { ...(cur.integrations ?? {}), [name]: value } }, null, 2), { mode: 0o600 });
+    chmodSync(this.file, 0o600);
+  }
+
+  deleteSecret(name: string) {
+    const cur = this.readFile();
+    if (!cur.integrations || !(name in cur.integrations)) return;
+    delete cur.integrations[name];
+    writeFileSync(this.file, JSON.stringify(cur, null, 2), { mode: 0o600 });
   }
 
   clearApiKey() {

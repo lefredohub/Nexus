@@ -16,4 +16,5 @@ Application personnelle locale : React + Vite (`src/`), API Hono (`server/`), SQ
 - Tout appel IA passe par `server/ai/providers.ts` (jamais directement par le SDK ou Ollama ailleurs).
 - Ne jamais logguer ni renvoyer la clé API à l'interface.
 - Accès distant (iPhone) : toute nouvelle route sensible doit utiliser `macOnly` dans `server/app.ts` ; la porte distante exige un appareil appairé (`server/auth.ts`).
+- Intégrations (Strava, Menhir, Apple Santé) : dans `server/integrations/`, toujours importer via `importWorkout` / `setDailyValue` (anti-doublons), secrets dans `SecretStore`, jamais d'écriture vers Menhir.
 - Interface en français, design sombre existant (tokens dans `src/styles.css`, composants dans `src/components/ui.tsx`).

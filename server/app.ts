@@ -36,7 +36,12 @@ import { runChat, conversationView } from './ai/agent';
 import { analyzeIdea, analyzeProject, generateBriefing, getCachedBriefing } from './ai/structured';
 import * as automations from './automations/engine';
 import { stepCatalog } from './automations/steps';
-import { INTEGRATIONS } from './integrations';
+import { INTEGRATIONS } from './integrations/registry';
+import * as strava from './integrations/strava';
+import * as menhir from './integrations/menhir';
+import { ingestHealth, healthStatus } from './integrations/health';
+import { IntegrationError } from './integrations/common';
+import { createApiToken, verifyApiToken, listApiTokens, revokeApiToken } from './auth';
 import { loadDemoData, isEmpty } from './db/seed';
 import { exportAll, backupDatabase, wipeData } from './db/export';
 
@@ -252,7 +257,6 @@ export function createApp(deps: AppDeps) {
 
   // ── Analytics ──────────────────────────────────────────────────────────────
   api.get('/analytics', (c) => c.json(analytics.analyticsDashboard(db)));
-  api.get('/integrations', (c) => c.json(INTEGRATIONS));
   api.get('/transactions', (c) => c.json(analytics.listTransactions(db, { from: c.req.query('from'), to: c.req.query('to'), limit: 200 })));
   api.post('/transactions', async (c) => c.json(analytics.createTransaction(db, await body(c, S.transactionInput)), 201));
   api.delete('/transactions/:id', (c) => (analytics.deleteTransaction(db, c.req.param('id')), c.json({ ok: true })));
@@ -279,6 +283,78 @@ export function createApp(deps: AppDeps) {
   api.delete('/metrics/:id', (c) => (analytics.deleteMetric(db, c.req.param('id')), c.json({ ok: true })));
   api.post('/metrics/:id/entries', async (c) => c.json(analytics.addMetricEntry(db, c.req.param('id'), await body(c, S.metricEntryInput)), 201));
   api.delete('/metric-entries/:id', (c) => (analytics.deleteMetricEntry(db, c.req.param('id')), c.json({ ok: true })));
+
+  // ── Intégrations (Strava, Menhir, Apple Santé) ─────────────────────────────
+  const integ = { db, secrets: deps.secrets, fetch: deps.fetch };
+  /** Traduit une erreur d'intégration en réponse lisible. */
+  const integrationError = (err: unknown): never => {
+    if (err instanceof IntegrationError) throw new AppError(err.kind === 'config' ? 400 : err.kind === 'auth' ? 401 : 502, `integration_${err.kind}`, err.message);
+    throw err;
+  };
+  api.get('/integrations', (c) =>
+    c.json({
+      catalog: INTEGRATIONS,
+      strava: strava.stravaStatus(integ),
+      menhir: menhir.menhirStatus(integ),
+      health: { ...healthStatus(db), tokens: mode === 'local' ? listApiTokens(db) : [] },
+    }),
+  );
+  // Strava
+  api.put('/integrations/strava/app', macOnly, async (c) => {
+    strava.setApp(deps.secrets, await body(c, S.stravaAppInput));
+    return c.json(strava.stravaStatus(integ));
+  });
+  /** Ouvre la page d'autorisation Strava (navigation, pas un appel fetch). */
+  api.get('/integrations/strava/connect', macOnly, (c) => {
+    // Strava n'accepte que le domaine déclaré (« localhost ») : même si NEXUS est ouvert
+    // via 127.0.0.1, on renvoie vers localhost, sur le même port.
+    const origin = new URL(c.req.url);
+    origin.hostname = 'localhost';
+    const redirectUri = `${origin.origin}/api/integrations/strava/callback`;
+    try {
+      return c.redirect(strava.authorizeUrl(deps.secrets, redirectUri));
+    } catch (err) {
+      return c.redirect(`/analytics?tab=sources&error=${encodeURIComponent(err instanceof Error ? err.message : 'Erreur')}`);
+    }
+  });
+  /** Retour de Strava après autorisation. */
+  api.get('/integrations/strava/callback', macOnly, async (c) => {
+    const back = (q: string) => c.redirect(`/analytics?tab=sources&${q}`);
+    if (c.req.query('error')) return back('error=' + encodeURIComponent('Autorisation Strava refusée.'));
+    if (!strava.consumeState(c.req.query('state'))) return back('error=' + encodeURIComponent('Lien d’autorisation expiré : recommence.'));
+    if (!/activity:read/.test(c.req.query('scope') ?? '')) return back('error=' + encodeURIComponent('Coche l’accès aux activités sur la page Strava, sinon NEXUS ne peut rien importer.'));
+    try {
+      await strava.exchangeCode(integ, c.req.query('code') ?? '');
+      const r = await strava.syncStrava(integ);
+      return back(`connected=strava&added=${r.added}`);
+    } catch (err) {
+      return back('error=' + encodeURIComponent(err instanceof Error ? err.message : 'Erreur Strava'));
+    }
+  });
+  api.post('/integrations/strava/sync', async (c) => c.json(await strava.syncStrava(integ).catch(integrationError)));
+  api.delete('/integrations/strava', macOnly, async (c) => (await strava.disconnect(integ), c.json({ ok: true })));
+  // Menhir
+  api.post('/integrations/menhir/login', macOnly, async (c) => {
+    const { email, password } = await body(c, S.menhirLoginInput);
+    await menhir.loginMenhir(integ, email, password).catch(integrationError);
+    const r = await menhir.syncMenhir(integ).catch(integrationError);
+    return c.json({ ...menhir.menhirStatus(integ), firstSync: r });
+  });
+  api.post('/integrations/menhir/sync', async (c) => c.json(await menhir.syncMenhir(integ).catch(integrationError)));
+  api.delete('/integrations/menhir', macOnly, (c) => (menhir.disconnect(integ), c.json({ ok: true })));
+  // Apple Santé : jetons pour le Raccourci
+  api.post('/integrations/health/tokens', macOnly, async (c) => {
+    const { name } = await body(c, z.object({ name: z.string().trim().min(1).max(60).default('Raccourci Santé') }));
+    return c.json(createApiToken(db, name, 'health:write'), 201);
+  });
+  api.delete('/integrations/health/tokens/:id', macOnly, (c) => (revokeApiToken(db, c.req.param('id')), c.json({ ok: true })));
+  /** Réception des mesures Santé envoyées par le Raccourci (jeton « Bearer »). */
+  api.post('/ingest/health', async (c) => {
+    if (!verifyApiToken(db, c.req.header('authorization'), 'health:write')) {
+      return c.json({ error: { code: 'invalid_token', message: 'Jeton absent ou invalide : recopie-le depuis NEXUS (Analytics → Sources).' } }, 401);
+    }
+    return c.json({ ok: true, ...ingestHealth(db, await body(c, S.healthIngest)) });
+  });
 
   // ── IA ─────────────────────────────────────────────────────────────────────
   api.get('/ai/status', async (c) => {

@@ -78,7 +78,9 @@ export function remoteGuard(verify: (token: string | undefined) => unknown): Mid
         return c.json({ error: { code: 'unsupported_media', message: 'JSON attendu' } }, 415);
       }
     }
-    if (!c.req.path.startsWith('/api/auth/')) {
+    // /api/auth/* : appairage. /api/ingest/* : envoi par le Raccourci iPhone, protégé par
+    // son propre jeton « Bearer » limité (vérifié dans la route), sans cookie d'appairage.
+    if (!c.req.path.startsWith('/api/auth/') && !c.req.path.startsWith('/api/ingest/')) {
       const token = readCookie(c.req.header('cookie'), SESSION_COOKIE);
       if (!verify(token)) return c.json({ error: { code: 'unauthenticated', message: 'Appareil non autorisé. Saisis le code d’appairage affiché sur ton Mac.' } }, 401);
     }

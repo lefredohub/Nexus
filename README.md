@@ -124,6 +124,22 @@ Par sécurité, depuis l'iPhone tu ne peux pas : changer d'IA ou de clé API, t�
 
 ---
 
+## Brancher Strava, Menhir et Apple Santé
+
+Tout se fait dans **Analytics → Sources** (sur le Mac). Les séances arrivent dans Analytics → Sport, les mesures dans Analytics → Métriques, et Jarvis peut s'en servir (« j'ai couru combien cette semaine ? »). Une même séance vue par plusieurs sources (montre → Strava → Santé → Menhir) n'est importée qu'une fois.
+
+**Strava** (synchro automatique toutes les heures)
+1. Sur [strava.com/settings/api](https://www.strava.com/settings/api), crée une application : site web `http://localhost`, **Authorization Callback Domain : `localhost`**.
+2. Dans NEXUS, colle le *Client ID* et le *Client Secret*, puis **Connecter avec Strava** et accepte (coche l'accès aux activités). NEXUS importe les 180 derniers jours, puis les nouveautés.
+
+**Menhir** (synchro automatique toutes les heures, lecture seule)
+- La sauvegarde cloud doit être activée dans Menhir (Réglages → Compte). Dans NEXUS, saisis l'e-mail et le mot de passe de ton compte Menhir : le mot de passe sert une seule fois, il n'est pas conservé. Sont importées les sorties de course et les séances de muscu (avec une métrique « Tonnage muscu »). NEXUS ne modifie jamais rien dans Menhir.
+
+**Apple Santé** (via un Raccourci iPhone, chaque soir)
+- Apple ne permet pas d'accès en ligne aux données Santé : c'est l'iPhone qui les envoie. Active d'abord l'accès iPhone (Tailscale), puis dans Sources : **Créer un jeton pour le Raccourci** et suis le guide affiché (automatisation quotidienne dans l'app Raccourcis). Envoyés : pas, calories actives, poids, FC au repos. Le jeton ne permet *que* d'envoyer des mesures de santé.
+
+---
+
 ## Utilisation au quotidien
 
 | Raccourci | Action |
@@ -166,6 +182,8 @@ Quelques usages qui exploitent bien NEXUS :
 ## Dépannage
 
 - **« Port déjà utilisé »** : une autre instance tourne (peut-être le démarrage automatique). Ferme-la, ou change les ports dans `.env` (`NEXUS_PORT`, `NEXUS_WEB_PORT`, `NEXUS_REMOTE_PORT`).
+- **Strava : « redirect_uri invalid »** : dans ton application Strava, le champ *Authorization Callback Domain* doit être exactement `localhost`.
+- **Menhir : « e-mail ou mot de passe incorrect »** : ce sont les identifiants du compte cloud de Menhir. S'il n'y en a pas, crée-le dans Menhir (Réglages → Compte).
 - **L'iPhone affiche « NEXUS est injoignable »** : le Mac est éteint ou en veille, NEXUS n'est pas lancé, ou Tailscale est déconnecté sur l'un des deux appareils.
 - **Jarvis n'entend rien** : vérifie que tu utilises l'adresse Tailscale (HTTPS) et que Safari a l'autorisation du micro (Réglages → Safari → Micro). Dans l'app ajoutée à l'écran d'accueil, selon la version d'iOS, la reconnaissance vocale peut être indisponible : utilise alors le bouton clavier et la dictée (micro du clavier iOS), ou ouvre Jarvis dans Safari.
 - **`node:sqlite` introuvable** : ta version de Node est trop ancienne (voir prérequis).

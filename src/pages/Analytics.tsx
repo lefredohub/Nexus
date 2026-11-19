@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
-import { Activity as ActivityIcon, Flame, Plus, Trash2, Upload, Wallet, Target, Gauge, Archive, Plug, Pencil } from 'lucide-react';
+import { Activity as ActivityIcon, Flame, Plus, Trash2, Upload, Wallet, Target, Gauge, Archive, Pencil } from 'lucide-react';
 import { api, useAction, useApi } from '../lib/api';
 import { navigate, useSearchParam } from '../lib/router';
 import { cx, fmtDate, fmtDue, fmtMoney, fmtNum, fmtPct, monthLabel, todayISO } from '../lib/format';
 import type { AnalyticsData, Goal, MetricWithEntries, Settings, Transaction, Workout } from '../lib/types';
 import { Badge, Button, EmptyState, Field, IconButton, Input, Modal, PageHeader, Panel, ProgressBar, SectionHeader, Select, Skeleton, Tabs, Textarea } from '../components/ui';
 import { BarChart, HBars, HabitCalendar, Legend, LineChart } from '../components/charts';
+import { Sources } from './Sources';
 
-type Tab = 'finance' | 'sport' | 'habits' | 'goals' | 'metrics';
+type Tab = 'finance' | 'sport' | 'habits' | 'goals' | 'metrics' | 'sources';
 const WORKOUT_LABEL: Record<string, string> = { run: 'Course', bike: 'Vélo', swim: 'Natation', strength: 'Renforcement', walk: 'Marche', yoga: 'Yoga', hiit: 'HIIT', sport: 'Sport co.', other: 'Autre' };
 
 export function Analytics() {
@@ -33,6 +34,7 @@ export function Analytics() {
           { value: 'habits', label: 'Habitudes' },
           { value: 'goals', label: 'Objectifs' },
           { value: 'metrics', label: 'Métriques' },
+          { value: 'sources', label: 'Sources' },
         ]}
       />
       {isLoading || !data ? (
@@ -43,6 +45,8 @@ export function Analytics() {
         <Sport data={data} />
       ) : tab === 'habits' ? (
         <Habits data={data} />
+      ) : tab === 'sources' ? (
+        <Sources />
       ) : tab === 'goals' ? (
         <Goals />
       ) : (
@@ -164,29 +168,8 @@ function Finance({ data, currency }: { data: AnalyticsData; currency: string }) 
           {txs.length === 0 && <EmptyState title="Aucune opération" text="Ajoute-en une ou importe un relevé bancaire." />}
         </div>
       </Panel>
-      <Integrations />
       <CsvImport open={importing} onClose={() => setImporting(false)} />
     </div>
-  );
-}
-
-function Integrations() {
-  const { data = [] } = useApi<{ id: string; name: string; description: string; status: string }[]>(['integrations'], '/integrations');
-  return (
-    <Panel className="p-5 lg:col-span-12">
-      <SectionHeader title="Sources de données" action={<Plug size={14} className="text-ink-4" />} />
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-        {data.map((i) => (
-          <div key={i.id} className={cx('rounded-xl border border-line p-3', i.status !== 'available' && 'opacity-60')}>
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-[13px] font-medium">{i.name}</span>
-              <Badge tone={i.status === 'available' ? 'ok' : 'neutral'}>{i.status === 'available' ? 'Disponible' : 'Prévu'}</Badge>
-            </div>
-            <div className="mt-1 text-[12px] text-ink-3">{i.description}</div>
-          </div>
-        ))}
-      </div>
-    </Panel>
   );
 }
 

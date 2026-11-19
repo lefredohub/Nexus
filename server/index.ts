@@ -15,6 +15,7 @@ import { PairingManager } from './auth';
 import { RemoteServer } from './remote';
 import { attachStatic } from './static';
 import { getSettings } from './repos/settings';
+import { startIntegrationSync } from './integrations/scheduler';
 
 loadDotEnv(resolve(config.root, '.env'));
 
@@ -34,6 +35,7 @@ const app = createApp({ db, secrets, backupDir, mode: 'local', pairing, remote }
 if (config.isProd) attachStatic(app, dist);
 
 const stopEngine = startAutomationEngine({ db, ai: { db, secrets } });
+const stopSync = startIntegrationSync({ db, secrets });
 
 const server = serve({ fetch: app.fetch, hostname: config.host, port: config.port }, async (info) => {
   const mode = getSettings(db).remote_mode;
@@ -53,6 +55,7 @@ const server = serve({ fetch: app.fetch, hostname: config.host, port: config.por
 
 function shutdown() {
   stopEngine();
+  stopSync();
   void remote.stop();
   server.close();
   db.close();

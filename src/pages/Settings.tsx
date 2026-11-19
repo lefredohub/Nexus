@@ -5,6 +5,7 @@ import type { AIStatus, Settings } from '../lib/types';
 import { Badge, Button, Field, Input, Kbd, PageHeader, Panel, SectionHeader, Select, Toggle } from '../components/ui';
 import { Core } from '../components/Core';
 import { toast } from '../components/Toast';
+import { RemoteAccessPanel, ThisDevicePanel } from './RemoteAccess';
 
 const MODELS = [
   { id: 'claude-opus-5-5', label: 'Claude Opus 5.5', hint: 'Recommandé · raisonnement solide, coût modéré' },
@@ -23,6 +24,7 @@ const EFFORTS = [
 export function SettingsPage() {
   const { data: s } = useApi<Settings>(['settings'], '/settings');
   const { data: ai } = useApi<AIStatus>(['ai-status'], '/ai/status');
+  const isMac = ai?.mode !== 'remote';
   const [name, setName] = useState('');
   const [currency, setCurrency] = useState('EUR');
   const [key, setKey] = useState('');
@@ -42,6 +44,9 @@ export function SettingsPage() {
     <div className="mx-auto max-w-[900px] px-4 py-6 md:px-8 md:py-9">
       <PageHeader eyebrow="Système" title="Réglages" subtitle="Tout est stocké localement, sur ta machine." />
       <div className="space-y-4">
+        {/* Accès depuis l'iPhone : réglable seulement sur le Mac */}
+        {isMac ? <RemoteAccessPanel /> : <ThisDevicePanel />}
+
         {/* IA */}
         <Panel hud className="p-5 md:p-6">
           <SectionHeader title="Intelligence artificielle" action={<Core size={26} state={ai?.key.configured ? 'idle' : 'offline'} />} />
@@ -50,22 +55,22 @@ export function SettingsPage() {
             <div className="min-w-0 flex-1">
               <div className="text-[13.5px]">Clé API Anthropic</div>
               <div className="font-mono text-[11.5px] text-ink-3">
-                {ai?.key.configured ? `${ai.key.masked} · ${ai.key.source === 'env' ? 'depuis la variable d’environnement' : 'stockée dans data/secrets.json'}` : 'non configurée'}
+                {!isMac ? 'gérée depuis le Mac' : ai?.key.configured ? `${ai.key.masked} · ${ai.key.source === 'env' ? 'depuis la variable d’environnement' : 'stockée dans data/secrets.json'}` : 'non configurée'}
               </div>
             </div>
             {ai?.key.configured ? <Badge tone="ok">Active</Badge> : <Badge>Hors ligne</Badge>}
-            {ai?.key.configured && (
+            {isMac && ai?.key.configured && (
               <Button size="sm" icon={<ShieldCheck size={13} />} loading={verify.isPending} onClick={() => verify.mutate(undefined)}>
                 Tester
               </Button>
             )}
-            {ai?.key.source === 'file' && (
+            {isMac && ai?.key.source === 'file' && (
               <Button size="sm" variant="ghost" onClick={() => confirm('Supprimer la clé enregistrée ?') && removeKey.mutate(undefined)}>
                 Supprimer
               </Button>
             )}
           </div>
-          {ai?.key.source !== 'env' && (
+          {isMac && ai?.key.source !== 'env' && (
             <form
               className="mb-6"
               onSubmit={(e) => {
@@ -135,7 +140,8 @@ export function SettingsPage() {
           </div>
         </Panel>
 
-        {/* Données */}
+        {/* Données (sur le Mac uniquement) */}
+        {isMac && (
         <Panel className="p-5 md:p-6">
           <SectionHeader title="Données" action={<HardDrive size={14} className="text-ink-4" />} />
           <p className="mb-4 text-[13px] text-ink-2">
@@ -162,6 +168,7 @@ export function SettingsPage() {
             </div>
           </div>
         </Panel>
+        )}
 
         {/* Raccourcis */}
         <Panel className="p-5 md:p-6">
@@ -172,6 +179,7 @@ export function SettingsPage() {
               [['N'], 'Capture rapide'],
               [['G', 'C'], 'Command Center'],
               [['G', 'A'], 'Nexus AI'],
+              [['G', 'J'], 'Jarvis (voix)'],
               [['G', 'M'], 'Memory Graph'],
               [['G', 'P'], 'Project Lab'],
               [['G', 'T'], 'Tâches'],

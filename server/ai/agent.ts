@@ -69,7 +69,7 @@ const titleFrom = (message: string) => {
 
 export async function* runChat(
   deps: AIDeps,
-  input: { conversationId?: string | null; message: string },
+  input: { conversationId?: string | null; message: string; voice?: boolean },
   signal?: AbortSignal,
 ): AsyncGenerator<ChatEvent> {
   let client: Anthropic;
@@ -92,11 +92,11 @@ export async function* runChat(
     role: 'user',
     kind: 'user',
     content: [
-      { type: 'text', text: isFirst ? initialContext(deps.db) : turnContext(deps.db) },
+      { type: 'text', text: isFirst ? initialContext(deps.db, input.voice) : turnContext(deps.db, input.voice) },
       { type: 'text', text: input.message },
     ],
     text: input.message,
-    meta: {},
+    meta: input.voice ? { voice: true } : {},
   });
   history = [...history, userMsg];
 

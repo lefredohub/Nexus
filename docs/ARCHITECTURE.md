@@ -92,10 +92,19 @@ Briefing, analyse d'idée et audit de projet utilisent les **sorties structurée
 ## Sécurité
 
 - Le serveur écoute **uniquement sur 127.0.0.1** : invisible depuis le réseau.
-- Pas d'authentification : sur une app strictement locale, un mot de passe ajouterait de la friction sans protection réelle (quiconque a accès à ta session a accès au fichier de données). Le vrai risque — un site web malveillant ouvert dans ton navigateur qui appellerait `localhost` — est bloqué par `server/security.ts` : vérification de l'en-tête `Host` (anti « DNS rebinding »), de l'`Origin` et du type JSON pour toute modification (anti-CSRF).
+- **Deux portes.** La porte locale (`127.0.0.1:4317`) sert le Mac lui-même, sans mot de passe : quiconque utilise ta session Mac a de toute façon accès au fichier de données. Le vrai risque — un site web malveillant ouvert dans ton navigateur qui appellerait `localhost` — est bloqué par `server/security.ts` : vérification de l'en-tête `Host` (anti « DNS rebinding »), de l'`Origin` et du type de contenu pour toute modification (anti-CSRF).
+- La **porte distante** (port 4318, `server/remote.ts`) n'existe que si tu l'actives. Toute requête API y exige un **appareil appairé** (`server/auth.ts`) : code à 6 chiffres, usage unique, 10 minutes, 5 essais par code et 20 échecs/heure au maximum ; en échange, un jeton de 256 bits en cookie `HttpOnly` (`Secure` en HTTPS), dont seule l'empreinte SHA-256 est stockée. Les modifications doivent venir de la même origine que la page. Les actions sensibles (clé API, export, sauvegarde, réinitialisation, gestion des appareils) sont **réservées au Mac** ; la clé n'est jamais renvoyée à un appareil distant, même masquée.
+- Mode Tailscale : la porte distante n'écoute que sur le Mac ; `tailscale serve` la rend accessible en HTTPS aux seuls appareils de ton compte Tailscale. Mode Wi-Fi : elle écoute sur le réseau local, en HTTP.
 - Clé API : variable d'environnement ou `data/secrets.json` en permissions `600`, jamais renvoyée à l'interface (seule une version masquée l'est).
 - Gabarits d'automatisation : simple lecture de chemins (`{{trigger.task.title}}`), aucune évaluation de code, aucun accès aux propriétés héritées.
 - Le rendu Markdown des réponses IA ne génère que des éléments React (pas d'injection HTML).
+
+## Jarvis (voix) et iPhone
+
+- **Reconnaissance et synthèse vocales** : API Web Speech du navigateur (`src/lib/speech.ts`). Aucun son n'est envoyé à NEXUS ni à Anthropic : seul le texte reconnu l'est. Sur iPhone, Safari s'appuie sur la dictée d'Apple ; le micro exige le HTTPS.
+- **Réponse parlée au fil de l'eau** : le texte reçu en streaming est découpé en phrases (`SentenceChunker`), nettoyé du Markdown (`stripForSpeech`) et lu dès qu'une phrase est complète.
+- **Réponses adaptées à l'oral** : un message envoyé depuis Jarvis porte `voice: true` ; la consigne « réponds en quelques phrases, sans mise en forme » est ajoutée dans le contexte **du message** (pas dans le prompt système, qui reste statique — historique en ajout seul).
+- **Application iPhone** : manifeste web + icônes (`public/`), mode plein écran, zones sûres (encoche), champs à 16 px (pas de zoom automatique de Safari). Pas de service worker : sans connexion au Mac, NEXUS n'a de toute façon pas de données à afficher, et l'absence de cache évite les versions périmées.
 
 ## Automatisations
 
@@ -125,15 +134,19 @@ Les tables `transactions`, `workouts` et `metric_entries` ont une colonne `sourc
 
 ## Tests
 
-`npm test` lance 50 tests (Vitest) sur les parties critiques :
+`npm test` lance 64 tests (Vitest) sur les parties critiques :
 - **données** : migrations, progression et santé des projets, objectifs, conversion idée → projet, liens, graphe, recherche plein texte, séries d'habitudes, import CSV sans doublons ;
 - **IA** (avec un client Claude simulé, sans réseau ni coût) : boucle d'outils, persistance, historique en ajout seul, mode lecture seule, réparation des tours interrompus, entrées tronquées, refus, traduction des erreurs ;
 - **automatisations** : gabarits, simulation sans effet, conditions, erreurs, appels HTTP, planification, événements sans boucle ;
-- **API** : protections de sécurité, validation, parcours complet, gestion de la clé, réinitialisation avec sauvegarde.
+- **API** : protections de sécurité, validation, parcours complet, gestion de la clé, réinitialisation avec sauvegarde ;
+- **accès distant** : appairage, code à usage unique et expiration, anti force brute, révocation, actions réservées au Mac, anti-CSRF ;
+- **voix** : nettoyage du Markdown pour l'oral, découpage en phrases, consigne vocale.
 
 ### Ce qui a été vérifié pendant la construction, et ce qui ne l'a pas été
 - ✅ Tests automatisés ci-dessus, vérification TypeScript, build de production.
 - ✅ Parcours réels dans un navigateur (Chromium) : onboarding, capture rapide, tâches, projet complet (étapes, risques, dépenses), idée → projet, graphe et notes, habitudes, import CSV, workflow (simulation puis exécution), refus de clé invalide ; affichage mobile sans débordement ; aucune erreur dans la console.
 - ✅ Chaîne IA complète avec le **vrai SDK Anthropic** branché sur un **serveur API simulé** local : vérification de clé, briefing, analyse d'idée, audit de projet, chat en streaming avec appel d'outil, à travers le proxy de développement, deux messages dans la même conversation.
 - ⚠️ **Non testé : appels réels à l'API Anthropic** (aucune clé disponible pendant la construction, et pour ne rien dépenser sans ton accord). Le format des requêtes suit la documentation officielle du SDK, mais le premier vrai test se fera avec ta clé : commence par « Tester » dans Réglages (gratuit), puis un premier message court.
+- ✅ Accès iPhone simulé (Chromium en profil « iPhone 15 Pro ») sur le serveur de production : appairage par code et par QR, refus d'un code faux, confirmation en direct côté Mac, Command Center et Jarvis sur iPhone, actions sensibles masquées, révocation. Boucle vocale complète avec micro et voix **simulés** : écoute, transcription en direct, réponse lue phrase par phrase sans Markdown, réécoute automatique, retour au repos.
+- ⚠️ **Non testé sur un vrai iPhone** ni avec un vrai micro : la qualité de la reconnaissance et des voix dépend d'iOS. **Non testés** : Tailscale réel (l'activation HTTPS lance `tailscale serve --bg 4318`), le démarrage automatique `launchd` et `NEXUS.command` (scripts vérifiés syntaxiquement, plist validé, mais jamais exécutés sur un Mac).
 - ⚠️ Développé et testé sous Linux. Le code n'utilise rien de spécifique à un système, mais le premier lancement sur ton Mac reste à faire.

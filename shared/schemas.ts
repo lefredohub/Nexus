@@ -267,6 +267,8 @@ export const automationPatch = automationInput.partial();
 export const chatInput = z.object({
   conversationId: z.string().nullable().optional(),
   message: z.string().trim().min(1).max(30000),
+  /** Mode vocal (Jarvis) : la réponse sera lue à voix haute, donc courte et sans mise en forme. */
+  voice: z.boolean().optional(),
 });
 
 export const AI_MODELS = ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-fable-5-2'] as const;
@@ -283,4 +285,13 @@ export const settingsPatch = z.object({
 
 export const apiKeyInput = z.object({
   apiKey: z.string().trim().regex(/^sk-ant-[A-Za-z0-9_\-]{20,}$/, 'Clé Anthropic invalide (doit commencer par sk-ant-)'),
+});
+
+// ─── Accès distant (iPhone) ──────────────────────────────────────────────────
+
+export const REMOTE_MODES = ['off', 'lan', 'tailscale'] as const;
+export const remotePatch = z.object({ mode: z.enum(REMOTE_MODES) });
+export const pairInput = z.object({
+  code: z.string().trim().regex(/^\d{6}$/, 'Le code contient 6 chiffres'),
+  name: z.string().trim().max(60).default(''),
 });

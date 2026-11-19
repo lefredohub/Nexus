@@ -309,6 +309,20 @@ const MIGRATIONS: string[] = [
   );
   ${searchTriggers()}
   `,
+
+  // ── v2 : appareils autorisés à accéder à NEXUS à distance (iPhone…) ──────
+  // On ne stocke qu'une empreinte (SHA-256) du jeton de session, jamais le jeton lui-même.
+  `
+  CREATE TABLE devices (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    token_hash TEXT NOT NULL UNIQUE,
+    user_agent TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    last_seen_at TEXT NOT NULL,
+    revoked_at TEXT
+  );
+  `,
 ];
 
 export function migrate(db: DatabaseSync): void {

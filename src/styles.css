@@ -367,3 +367,21 @@ body {
     transition-duration: 0.001ms !important;
   }
 }
+
+/* ─── iPhone ─────────────────────────────────────────────────────────────── */
+html {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+}
+body {
+  overscroll-behavior: none;
+}
+/* Safari zoome sur un champ dont le texte fait moins de 16 px : on l'évite sur mobile. */
+@media (max-width: 767px) {
+  .field,
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}

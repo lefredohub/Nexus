@@ -19,5 +19,7 @@ export const config = {
   host: '127.0.0.1',
   port: Number(process.env.NEXUS_PORT ?? 4317),
   webPort: Number(process.env.NEXUS_WEB_PORT ?? 5317),
+  /** Porte d'accès distant (iPhone), ouverte seulement si activée dans Réglages. */
+  remotePort: Number(process.env.NEXUS_REMOTE_PORT ?? 4318),
   isProd: process.env.NODE_ENV === 'production',
 };

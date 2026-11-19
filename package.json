@@ -12,12 +12,13 @@
     "dev:server": "tsx watch --clear-screen=false server/index.ts",
     "dev:web": "vite",
     "build": "vite build",
-    "start": "NODE_ENV=production NODE_OPTIONS=--no-warnings=ExperimentalWarning tsx server/index.ts",
+    "start": "npm run build && npm run serve",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "NODE_OPTIONS=--no-warnings=ExperimentalWarning vitest run",
     "test:watch": "vitest",
     "seed": "NODE_OPTIONS=--no-warnings=ExperimentalWarning tsx server/db/seed-cli.ts",
-    "check": "npm run typecheck && npm test"
+    "check": "npm run typecheck && npm test",
+    "serve": "NODE_ENV=production NODE_OPTIONS=--no-warnings=ExperimentalWarning tsx server/index.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.10.0",
@@ -29,6 +30,7 @@
     "hono": "^4.13.19",
     "lucide-react": "^1.75.0",
     "motion": "^14.14.0",
+    "qrcode": "^1.5.4",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "zod": "^4.6.7"
@@ -37,6 +39,7 @@
     "@tailwindcss/vite": "^4.3.5",
     "@types/d3-force": "^3.0.10",
     "@types/node": "^26.6.6",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.3.0",

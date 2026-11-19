@@ -25,8 +25,15 @@ Principes :
 
 Style : réponds dans la langue de l'utilisateur (français par défaut). Va à l'essentiel, structure avec des titres courts ou des listes quand ça aide, en Markdown simple. Pas de formules creuses ni de flatterie. Les identifiants techniques (prj_…, tsk_…) sont pour les outils : ne les montre pas sauf demande.`;
 
+/**
+ * Consigne ajoutée aux messages dictés en mode vocal (Jarvis). Elle vit dans le
+ * message utilisateur, pas dans SYSTEM_PROMPT, pour garder celui-ci statique.
+ */
+export const VOICE_HINT =
+  'Mode vocal : ta réponse sera lue à voix haute. Réponds en 1 à 4 phrases courtes et naturelles, à l’oral, sans Markdown, sans listes, sans émojis ni identifiants. Si le sujet mérite plus, résume puis propose de détailler.';
+
 /** Contexte complet injecté au premier message d'une conversation. */
-export function initialContext(db: DB): string {
+export function initialContext(db: DB, voice = false): string {
   const s = getSettings(db);
   const memories = listMemories(db, 60);
   const now = new Date();
@@ -41,13 +48,14 @@ export function initialContext(db: DB): string {
     '',
     '## Mémoire long terme',
     memories.length ? memories.map((m) => `- (${m.kind}, importance ${m.importance}, ${m.created_at.slice(0, 10)}) ${m.content} [${m.id}]`).join('\n') : '(vide pour le moment)',
+    voice ? `\n${VOICE_HINT}` : '',
     `</nexus_context>`,
   ];
   return parts.filter((p, i) => p !== '' || i > 3).join('\n');
 }
 
 /** Contexte léger pour les tours suivants (les données fraîches s'obtiennent par les outils). */
-export function turnContext(db: DB): string {
+export function turnContext(db: DB, voice = false): string {
   const s = getSettings(db);
-  return `<nexus_context>Maintenant : ${new Date().toLocaleString('fr-FR', { dateStyle: 'full', timeStyle: 'short' })} · Écriture par l'IA : ${s.ai_allow_writes ? 'autorisée' : 'désactivée'}</nexus_context>`;
+  return `<nexus_context>Maintenant : ${new Date().toLocaleString('fr-FR', { dateStyle: 'full', timeStyle: 'short' })} · Écriture par l'IA : ${s.ai_allow_writes ? 'autorisée' : 'désactivée'}${voice ? `\n${VOICE_HINT}` : ''}</nexus_context>`;
 }

@@ -4,6 +4,7 @@ Application personnelle locale : React + Vite (`src/`), API Hono (`server/`), SQ
 
 ## Commandes
 - `npm run dev` — API (4317) + interface (5317)
+- `npm start` — build + serveur de production (4317) ; porte iPhone sur 4318 si activée
 - `npm run check` — typecheck + tests (à lancer avant chaque commit)
 
 ## Règles du projet
@@ -13,4 +14,5 @@ Application personnelle locale : React + Vite (`src/`), API Hono (`server/`), SQ
 - Historique des conversations IA en **ajout seul** : ne jamais modifier/supprimer un message stocké, garder `SYSTEM_PROMPT` statique et la liste d'outils stable (voir `server/ai/agent.ts`).
 - Ne jamais appeler l'API Anthropic réelle dans les tests : utiliser le client simulé (`tests/ai.test.ts`).
 - Ne jamais logguer ni renvoyer la clé API à l'interface.
+- Accès distant (iPhone) : toute nouvelle route sensible doit utiliser `macOnly` dans `server/app.ts` ; la porte distante exige un appareil appairé (`server/auth.ts`).
 - Interface en français, design sombre existant (tokens dans `src/styles.css`, composants dans `src/components/ui.tsx`).

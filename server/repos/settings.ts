@@ -7,6 +7,8 @@ export interface Settings {
   ai_allow_writes: boolean;
   currency: string;
   onboarded: boolean;
+  /** Porte d'accès distant (iPhone) : désactivée par défaut. */
+  remote_mode: 'off' | 'lan' | 'tailscale';
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -16,6 +18,7 @@ export const DEFAULT_SETTINGS: Settings = {
   ai_allow_writes: true,
   currency: 'EUR',
   onboarded: false,
+  remote_mode: 'off',
 };
 
 export function getSettings(db: DB): Settings {

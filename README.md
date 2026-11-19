@@ -13,6 +13,7 @@ Tout tourne **sur ta machine**. Les données restent dans un fichier local. Rien
 | Module | Ce qu'il fait |
 |---|---|
 | **Command Center** | Vue d'ensemble : indicateurs, briefing IA du jour, focus (tâches vraiment prioritaires), projets, objectifs, habitudes, flux d'activité. |
+| **Jarvis** | L'IA à la voix : tu touches le noyau, tu parles, NEXUS consulte tes données, agit et te répond à voix haute. Mode conversation (il se remet à l'écoute après chaque réponse). Pensé pour l'iPhone. |
 | **Nexus AI** | Assistant conversationnel connecté à tes données via 26 outils (lecture et écriture). Mémoire long terme consultable et modifiable. Raisonnement visible, actions tracées. |
 | **Memory Graph** | Réseau de connaissances interactif : objectifs, projets, idées, notes, souvenirs, et leurs liens. Glisser, zoomer, relier. |
 | **Project Lab** | Projets avec objectif, étapes, tâches, budget et dépenses, risques, notes. **Audit IA** qui révèle les faiblesses et propose des actions à intégrer en un clic. |
@@ -47,11 +48,9 @@ npm install
 
 ### 3. Lancer
 
-```bash
-npm run dev
-```
+**Le plus simple :** double-clique sur **`NEXUS.command`** dans le Finder. Il installe ce qui manque, démarre NEXUS et ouvre **http://localhost:4317**.
 
-Puis ouvre **http://localhost:5317**.
+En ligne de commande : `npm start` (même résultat), ou `npm run dev` pour développer (interface sur http://localhost:5317, rechargement automatique).
 
 Au premier lancement, NEXUS te demande ton prénom et te propose :
 - **Partir de zéro** — un espace vierge pour tes vraies données ;
@@ -71,12 +70,62 @@ Alternative : copie `.env.example` en `.env` et renseigne `ANTHROPIC_API_KEY=...
 
 ---
 
+## Sur ton iPhone : NEXUS dans la poche, Jarvis à la voix
+
+Tes données restent sur le Mac ; l'iPhone s'y connecte. Le Mac doit donc être allumé avec NEXUS lancé.
+
+### Étape 1 — Choisir comment l'iPhone joint le Mac
+
+Sur le Mac : **Réglages → Accès depuis l'iPhone**.
+
+| Mode | Où ça marche | Micro (Jarvis) | Mise en place |
+|---|---|---|---|
+| **Tailscale** (recommandé) | Partout : 4G, n'importe quel Wi-Fi | ✅ (HTTPS) | Installer Tailscale, gratuit, 5 min |
+| **Wi-Fi de la maison** | Uniquement sur le même Wi-Fi | ❌ Safari bloque le micro sans HTTPS (Jarvis parle quand même, et la dictée du clavier fonctionne) | Rien |
+
+**Tailscale**, pas à pas :
+1. Installe Tailscale sur le Mac et sur l'iPhone depuis [tailscale.com/download](https://tailscale.com/download), connecte-toi avec **le même compte** sur les deux.
+2. Dans NEXUS (Mac) : choisis **Tailscale**, puis clique sur **Activer le HTTPS Tailscale**. Si Tailscale demande d'activer les certificats HTTPS, suis le lien affiché puis recommence.
+3. NEXUS affiche ton adresse privée, du type `https://ton-mac.tailXXXX.ts.net`. Elle n'est accessible qu'à **tes** appareils connectés à Tailscale : rien n'est publié sur Internet.
+
+### Étape 2 — Relier l'iPhone
+
+1. Sur le Mac : **Appairer un appareil** → un QR code et un code à 6 chiffres s'affichent (valables 10 minutes, usage unique).
+2. Scanne le QR code avec l'appareil photo de l'iPhone : Safari s'ouvre, l'iPhone est relié.
+3. Pour une vraie icône d'app : dans Safari, **Partager → Sur l'écran d'accueil**. Ouvre NEXUS depuis l'icône ; iOS sépare cette app de Safari, il faudra donc saisir **un nouveau code** une fois.
+
+Chaque appareil relié apparaît dans les Réglages du Mac, où tu peux le retirer à tout moment.
+
+### Étape 3 — Parler à Jarvis
+
+Touche le bouton central (le noyau), parle, relâche : Jarvis répond à voix haute. Avec le **mode conversation**, il se remet à l'écoute après chaque réponse : tu enchaînes comme avec une personne. Touche le noyau pour l'interrompre.
+
+Conseil voix : sur iPhone, installe une voix française **« Améliorée »** (Réglages → Accessibilité → Contenu énoncé → Voix → Français), puis choisis-la dans Jarvis (icône réglages en haut à droite).
+
+### Garder NEXUS toujours disponible
+
+Pour que Jarvis réponde même quand tu n'as pas pensé à lancer NEXUS, active le démarrage automatique sur le Mac :
+
+```bash
+./scripts/mac/autostart.sh install     # démarre maintenant et à chaque ouverture de session
+./scripts/mac/autostart.sh uninstall   # pour retirer
+```
+
+(N'utilise pas `NEXUS.command` en même temps : le port serait déjà pris.) Le Mac ne doit pas être en veille pour répondre : Réglages Système → Écran verrouillé / Batterie → empêcher la mise en veille automatique sur secteur.
+
+### Ce qui reste réservé au Mac
+
+Par sécurité, depuis l'iPhone tu ne peux pas : voir ou changer la clé API, exporter/sauvegarder/réinitialiser les données, ni relier d'autres appareils.
+
+---
+
 ## Utilisation au quotidien
 
 | Raccourci | Action |
 |---|---|
 | `⌘ K` | Palette : rechercher dans toute ta mémoire, naviguer, agir, poser une question à NEXUS |
 | `N` | Capture rapide (tâche, idée ou note) |
+| `G` puis `J` | Jarvis |
 | `G` puis `C` / `A` / `M` / `P` / `T` / `S` / `I` / `L` | Aller au Command Center / IA / Graphe / Projets / Tâches / Stats / Idées / Automations |
 
 Quelques usages qui exploitent bien NEXUS :
@@ -100,18 +149,20 @@ Quelques usages qui exploitent bien NEXUS :
 
 | Commande | Rôle |
 |---|---|
+| `npm start` | Compile l'interface et lance NEXUS (http://localhost:4317) — usage quotidien et iPhone |
 | `npm run dev` | Lance NEXUS en développement (rechargement automatique) |
 | `npm test` | Lance les tests automatisés |
 | `npm run typecheck` | Vérifie les types TypeScript |
 | `npm run check` | Les deux à la suite |
-| `npm run build` puis `npm start` | Version optimisée, servie sur http://localhost:4317 |
 | `npm run seed` | Charge les données de démo (uniquement dans une base vide) |
 
 ---
 
 ## Dépannage
 
-- **« Port déjà utilisé »** : une autre instance tourne. Ferme-la, ou change les ports dans `.env` (`NEXUS_PORT`, `NEXUS_WEB_PORT`).
+- **« Port déjà utilisé »** : une autre instance tourne (peut-être le démarrage automatique). Ferme-la, ou change les ports dans `.env` (`NEXUS_PORT`, `NEXUS_WEB_PORT`, `NEXUS_REMOTE_PORT`).
+- **L'iPhone affiche « NEXUS est injoignable »** : le Mac est éteint ou en veille, NEXUS n'est pas lancé, ou Tailscale est déconnecté sur l'un des deux appareils.
+- **Jarvis n'entend rien** : vérifie que tu utilises l'adresse Tailscale (HTTPS) et que Safari a l'autorisation du micro (Réglages → Safari → Micro). Dans l'app ajoutée à l'écran d'accueil, selon la version d'iOS, la reconnaissance vocale peut être indisponible : utilise alors le bouton clavier et la dictée (micro du clavier iOS), ou ouvre Jarvis dans Safari.
 - **`node:sqlite` introuvable** : ta version de Node est trop ancienne (voir prérequis).
 - **« Clé API refusée »** : vérifie la clé dans Réglages, et que ton compte Anthropic a du crédit.
 - **« Modèle introuvable »** : ton compte n'a pas accès à ce modèle ; choisis-en un autre dans Réglages.

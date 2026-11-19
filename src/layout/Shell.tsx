@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { LayoutGrid, Sparkles, Network, FolderKanban, ListChecks, Activity, Lightbulb, Workflow, Settings2, Search, Plus } from 'lucide-react';
+import { AudioLines, LayoutGrid, Sparkles, Network, FolderKanban, ListChecks, Activity, Lightbulb, Workflow, Settings2, Search, Plus } from 'lucide-react';
 import { Link, navigate, usePath } from '../lib/router';
 import { useApi } from '../lib/api';
 import { cx } from '../lib/format';
@@ -12,6 +12,7 @@ import { QuickCapture } from './QuickCapture';
 export const NAV = [
   { to: '/', label: 'Command Center', short: 'Accueil', icon: LayoutGrid, key: 'c' },
   { to: '/ai', label: 'Nexus AI', short: 'IA', icon: Sparkles, key: 'a' },
+  { to: '/jarvis', label: 'Jarvis', short: 'Jarvis', icon: AudioLines, key: 'j' },
   { to: '/graph', label: 'Memory Graph', short: 'Graphe', icon: Network, key: 'm' },
   { to: '/projects', label: 'Project Lab', short: 'Projets', icon: FolderKanban, key: 'p' },
   { to: '/tasks', label: 'Tâches', short: 'Tâches', icon: ListChecks, key: 't' },
@@ -135,14 +136,25 @@ export function Shell({ children }: { children: ReactNode }) {
       </aside>
 
       {/* Contenu */}
-      <main className="relative z-10 min-w-0 flex-1 overflow-y-auto overflow-x-hidden pb-24 md:pb-0" id="main">
+      <main className="relative z-10 min-w-0 flex-1 overflow-y-auto overflow-x-hidden pb-24 pt-[env(safe-area-inset-top)] md:pb-0 md:pt-0" id="main">
         {children}
       </main>
 
       {/* Navigation mobile */}
       <nav className="fixed inset-x-0 bottom-0 z-30 flex items-center justify-around border-t border-line bg-base/90 px-1 pb-[max(env(safe-area-inset-bottom),6px)] pt-1.5 backdrop-blur-xl md:hidden">
-        {[NAV[0], NAV[1], NAV[3], NAV[4], NAV[6]].map((n) => {
+        {[NAV[0], NAV[1], NAV[2], NAV[5]].map((n) => {
           const active = isActive(n.to, path);
+          if (n.to === '/jarvis') {
+            // Bouton central : le noyau de Jarvis.
+            return (
+              <Link key={n.to} to={n.to} aria-label="Jarvis" className="-mt-6 flex flex-col items-center gap-0.5 text-[10.5px]">
+                <span className={cx('flex h-14 w-14 items-center justify-center rounded-full border bg-base shadow-[0_0_24px_rgb(255_107_44/0.35)]', active ? 'border-signal' : 'border-signal/40')}>
+                  <Core size={38} state="idle" />
+                </span>
+                <span className={active ? 'text-ink' : 'text-ink-3'}>Jarvis</span>
+              </Link>
+            );
+          }
           return (
             <Link key={n.to} to={n.to} className={cx('flex min-w-14 flex-col items-center gap-0.5 rounded-lg px-2 py-1 text-[10.5px]', active ? 'text-ink' : 'text-ink-3')}>
               <n.icon size={19} strokeWidth={1.7} className={active ? 'text-signal' : ''} />

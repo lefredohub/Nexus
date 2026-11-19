@@ -29,5 +29,13 @@ export type MetricWithEntries = ReturnType<typeof listMetrics>[number];
 export type ConversationView = ReturnType<typeof conversationView>;
 export type ConversationSummary = Conversation;
 export interface ActivityItem { id: string; kind: string; title: string; detail: string; actor: string; entity_kind: string | null; entity_id: string | null; created_at: string }
-export interface AIStatus { key: { configured: boolean; source: 'env' | 'file' | null; masked: string | null }; model: string; effort: string; allowWrites: boolean }
+export interface AIStatus { key: { configured: boolean; source: 'env' | 'file' | null; masked: string | null }; model: string; effort: string; allowWrites: boolean; mode?: 'local' | 'remote' }
+export interface AuthStatus { mode: 'local' | 'remote'; authenticated: boolean; device: { id: string; name: string; created_at: string; last_seen_at: string } | null }
+export interface RemoteInfo {
+  mode: 'off' | 'lan' | 'tailscale';
+  status: { mode: string; running: boolean; port: number; error: string | null; lanUrls: string[]; tailscale: { installed: boolean; dnsName: string | null; url: string | null } } | null;
+  baseUrl: string | null;
+  devices: { id: string; name: string; user_agent: string; created_at: string; last_seen_at: string }[];
+  pairing: { code: string; expiresAt: string } | null;
+}
 export interface StepCatalogItem { type: string; label: string; description: string; category: string; sideEffect: boolean; fields: import('../../server/automations/steps').StepField[] }

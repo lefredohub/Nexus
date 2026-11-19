@@ -129,3 +129,16 @@ describe('stockage de la clé', () => {
     }
   });
 });
+
+describe('règle « JSON ou vide » (anti-CSRF)', () => {
+  it('accepte JSON et requêtes sans contenu, refuse formulaires et texte', async () => {
+    const { isJsonOrEmpty } = await import('../server/security');
+    expect(isJsonOrEmpty('application/json; charset=utf-8', '12', undefined)).toBe(true);
+    expect(isJsonOrEmpty(undefined, undefined, undefined)).toBe(true); // DELETE sans corps
+    expect(isJsonOrEmpty(undefined, '0', undefined)).toBe(true);
+    expect(isJsonOrEmpty('application/x-www-form-urlencoded', '7', undefined)).toBe(false);
+    expect(isJsonOrEmpty('text/plain', '3', undefined)).toBe(false);
+    expect(isJsonOrEmpty('multipart/form-data; boundary=x', undefined, 'chunked')).toBe(false);
+    expect(isJsonOrEmpty(undefined, '5', undefined)).toBe(false);
+  });
+});

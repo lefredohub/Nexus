@@ -3,7 +3,8 @@
  * `createApp` reçoit ses dépendances : les tests peuvent ainsi utiliser une
  * base en mémoire et un faux client IA.
  */
-import { Hono, type Context } from 'hono';
+import { Hono, type Context, type MiddlewareHandler } from 'hono';
+import QRCode from 'qrcode';
 import { streamSSE } from 'hono/streaming';
 import { z, ZodError } from 'zod';
 import type { DB } from './db/client';
@@ -12,7 +13,9 @@ import type { SecretStore } from './ai/secrets';
 import type { AIDeps } from './ai/client';
 import { getClient, toAppError } from './ai/client';
 import { AppError } from './lib/errors';
-import { localOnly } from './security';
+import { localOnly, remoteGuard } from './security';
+import { PairingManager, pairDevice, verifySession, listDevices, revokeDevice, readCookie, sessionCookie, clearSessionCookie, SESSION_COOKIE } from './auth';
+import { enableTailscaleServe, type RemoteServer } from './remote';
 import * as S from '../shared/schemas';
 import * as tasks from './repos/tasks';
 import * as projects from './repos/projects';
@@ -37,6 +40,15 @@ import { exportAll, backupDatabase, wipeData } from './db/export';
 
 export interface AppDeps {
   db: DB;
+  /**
+   * « local » : servi sur 127.0.0.1 au Mac lui-même (pas d'authentification).
+   * « remote » : servi aux appareils distants (iPhone) — appairage obligatoire.
+   */
+  mode?: 'local' | 'remote';
+  /** Gestionnaire de codes d'appairage, partagé entre les deux portes. */
+  pairing?: PairingManager;
+  /** Porte distante, pilotable depuis les Réglages du Mac. */
+  remote?: RemoteServer;
   /** Dossier des sauvegardes (data/backups). */
   backupDir?: string;
   secrets: SecretStore;
@@ -59,9 +71,17 @@ export function createApp(deps: AppDeps) {
   const { db } = deps;
   const ai: AIDeps = { db, secrets: deps.secrets, makeClient: deps.makeClient };
   const engine = { db, ai, fetch: deps.fetch };
+  const mode = deps.mode ?? 'local';
+  const pairing = deps.pairing ?? new PairingManager();
   const app = new Hono();
 
-  app.use('/api/*', localOnly);
+  app.use('/api/*', mode === 'remote' ? remoteGuard((token) => verifySession(db, token)) : localOnly);
+
+  /** Routes sensibles réservées au Mac (clé API, réinitialisation, gestion des appareils…). */
+  const macOnly: MiddlewareHandler = async (c, next) => {
+    if (mode !== 'local') return c.json({ error: { code: 'local_only', message: 'Action disponible uniquement depuis le Mac.' } }, 403);
+    await next();
+  };
 
   app.onError((err, c) => {
     if (err instanceof ZodError) {
@@ -74,6 +94,57 @@ export function createApp(deps: AppDeps) {
 
   const api = new Hono();
 
+  // ── Authentification des appareils distants ────────────────────────────────
+  api.get('/auth/status', (c) => {
+    if (mode === 'local') return c.json({ mode, authenticated: true, device: null });
+    const device = verifySession(db, readCookie(c.req.header('cookie'), SESSION_COOKIE));
+    return c.json({ mode, authenticated: Boolean(device), device });
+  });
+  api.post('/auth/pair', async (c) => {
+    if (mode === 'local') return c.json({ ok: true });
+    const { code, name } = await body(c, S.pairInput);
+    const { token, device } = pairDevice(db, pairing, code, name, c.req.header('user-agent') ?? '');
+    const secure = c.req.header('x-forwarded-proto') === 'https' || new URL(c.req.url).protocol === 'https:';
+    c.header('Set-Cookie', sessionCookie(token, secure));
+    return c.json({ ok: true, device });
+  });
+  api.post('/auth/logout', (c) => {
+    const device = verifySession(db, readCookie(c.req.header('cookie'), SESSION_COOKIE));
+    if (device) revokeDevice(db, device.id);
+    c.header('Set-Cookie', clearSessionCookie());
+    return c.json({ ok: true });
+  });
+
+  // ── Accès distant (piloté depuis le Mac uniquement) ────────────────────────
+  api.use('/remote/*', macOnly);
+  api.use('/remote', macOnly);
+  const remoteInfo = async () => {
+    const status = deps.remote ? await deps.remote.status() : null;
+    const base = status?.mode === 'tailscale' ? status.tailscale.url : status?.mode === 'lan' ? status.lanUrls[0] ?? null : null;
+    return { mode: getSettings(db).remote_mode, status, baseUrl: base, devices: listDevices(db), pairing: pairing.activeCode() };
+  };
+  api.get('/remote', async (c) => c.json(await remoteInfo()));
+  api.patch('/remote', async (c) => {
+    const { mode: next } = await body(c, S.remotePatch);
+    if (!deps.remote) throw new AppError(400, 'remote_unavailable', 'Accès distant indisponible dans ce contexte');
+    updateSettings(db, { remote_mode: next });
+    await deps.remote.apply(next);
+    return c.json(await remoteInfo());
+  });
+  api.post('/remote/pairing', async (c) => {
+    const info = await remoteInfo();
+    const { code, expiresAt } = pairing.createCode();
+    const url = info.baseUrl ? `${info.baseUrl}/?pair=${code}` : null;
+    const qr = url ? await QRCode.toString(url, { type: 'svg', margin: 1, color: { dark: '#060708', light: '#ffffff' } }) : null;
+    return c.json({ code, expiresAt, url, qr });
+  });
+  api.delete('/remote/devices/:id', (c) => (revokeDevice(db, c.req.param('id')), c.json({ ok: true })));
+  api.post('/remote/tailscale', async (c) => {
+    if (!deps.remote) throw new AppError(400, 'remote_unavailable', 'Accès distant indisponible dans ce contexte');
+    const r = await enableTailscaleServe(deps.remote.port);
+    return c.json({ ...r, info: await remoteInfo() });
+  });
+
   // ── Système ────────────────────────────────────────────────────────────────
   api.get('/health', (c) => c.json({ ok: true, date: todayISO() }));
   api.get('/overview', (c) => c.json(getOverview(db)));
@@ -84,15 +155,15 @@ export function createApp(deps: AppDeps) {
   });
   api.get('/settings', (c) => c.json(getSettings(db)));
   api.patch('/settings', async (c) => c.json(updateSettings(db, await body(c, S.settingsPatch))));
-  api.get('/export', (c) => {
+  api.get('/export', macOnly, (c) => {
     c.header('Content-Disposition', `attachment; filename="nexus-export-${todayISO()}.json"`);
     return c.json(exportAll(db));
   });
-  api.post('/backup', (c) => {
+  api.post('/backup', macOnly, (c) => {
     if (!deps.backupDir) throw new AppError(400, 'no_backup_dir', 'Sauvegarde indisponible');
     return c.json({ file: backupDatabase(db, deps.backupDir) });
   });
-  api.post('/reset', async (c) => {
+  api.post('/reset', macOnly, async (c) => {
     const { confirm } = await body(c, z.object({ confirm: z.literal('EFFACER', { message: 'Tape EFFACER pour confirmer' }) }));
     void confirm;
     if (!deps.backupDir) throw new AppError(400, 'no_backup_dir', 'Sauvegarde indisponible : réinitialisation refusée');
@@ -101,7 +172,7 @@ export function createApp(deps: AppDeps) {
     return c.json({ ok: true, backup: file });
   });
   api.get('/demo', (c) => c.json({ empty: isEmpty(db) }));
-  api.post('/demo', (c) => {
+  api.post('/demo', macOnly, (c) => {
     if (!isEmpty(db)) throw new AppError(409, 'not_empty', 'Les données de démonstration ne peuvent être chargées que dans un espace vide.');
     loadDemoData(db);
     updateSettings(db, { onboarded: true });
@@ -208,14 +279,16 @@ export function createApp(deps: AppDeps) {
   // ── IA ─────────────────────────────────────────────────────────────────────
   api.get('/ai/status', (c) => {
     const s = getSettings(db);
-    return c.json({ key: deps.secrets.status(), model: s.ai_model, effort: s.ai_effort, allowWrites: s.ai_allow_writes });
+    const key = deps.secrets.status();
+    // Depuis un appareil distant, on n'expose même pas la version masquée de la clé.
+    return c.json({ key: mode === 'local' ? key : { ...key, masked: null }, model: s.ai_model, effort: s.ai_effort, allowWrites: s.ai_allow_writes, mode });
   });
-  api.post('/ai/key', async (c) => {
+  api.post('/ai/key', macOnly, async (c) => {
     const { apiKey } = await body(c, S.apiKeyInput);
     deps.secrets.setApiKey(apiKey);
     return c.json(deps.secrets.status());
   });
-  api.delete('/ai/key', (c) => (deps.secrets.clearApiKey(), c.json(deps.secrets.status())));
+  api.delete('/ai/key', macOnly, (c) => (deps.secrets.clearApiKey(), c.json(deps.secrets.status())));
   /** Vérifie la clé via l'API Models (aucun token consommé). */
   api.post('/ai/verify', async (c) => {
     const client = getClient(ai);

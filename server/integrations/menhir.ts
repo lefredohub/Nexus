@@ -22,7 +22,7 @@ import type { DB } from '../db/client';
 import { todayISO } from '../db/client';
 import { logActivity } from '../repos/activity';
 import type { SecretStore } from '../ai/secrets';
-import { importWorkout, intensityFromHeartRate, setDailyValue, getState, setState, clearState, addTotals, fetchJson, IntegrationError, type MetricSpec } from './common';
+import { importWorkout, intensityFromHeartRate, setDailyValue, deleteDailyValue, clearSourceValues, getState, setState, clearState, addTotals, fetchJson, IntegrationError, type MetricSpec } from './common';
 import { menhirRun, menhirSession, menhirCheckin, type MenhirRun, type MenhirSession, type MenhirCheckin } from '../../shared/schemas';
 
 export type { MenhirRun, MenhirSession };
@@ -168,7 +168,7 @@ export async function syncMenhir(d: MenhirDeps): Promise<Record<string, number>>
   const state = getState(d.db, ID);
   try {
     const { token, session } = await accessToken(d);
-    const rows = await fetchJson<{ data: { runs?: unknown; h?: unknown; ck?: unknown } | null }[]>(
+    const rows = await fetchJson<{ data: { runs?: unknown; h?: unknown; ck?: unknown; cs?: unknown } | null }[]>(
       d.fetch ?? fetch,
       ...sb(session, `/rest/v1/fitlog_data?select=data&user_id=eq.${encodeURIComponent(session.user_id)}`, {}, token),
       'Menhir',
@@ -181,24 +181,34 @@ export async function syncMenhir(d: MenhirDeps): Promise<Record<string, number>>
       if (!p.success) continue;
       const r = p.data;
       if (!(r.s && r.s > 0)) continue;
-      counts[importWorkout(d.db, runToWorkout(r), 'menhir', `run:${r.id ?? `${r.d}|${r.km}`}`)]++;
+      // Identifiant construit avec la distance telle que Menhir l'a écrite (« 8.20 » reste « 8.20 »), comme avant.
+      const rawKm = (raw as { km?: unknown }).km;
+      counts[importWorkout(d.db, runToWorkout(r), 'menhir', `run:${r.id ?? `${r.d}|${rawKm}`}`)]++;
     }
     const tonnageByDay = new Map<string, number>();
+    const gymDays = new Set<string>(); // jours avec une séance dans Menhir, même sans tonnage
     for (const raw of list(data.h)) {
       const p = menhirSession.safeParse(raw);
       if (!p.success) continue;
       const h = p.data;
       const sum = sessionSummary(h);
-      if (!sum.sets) continue; // rien de fait (séance vide ou tout passé)
       const w = sessionToWorkout(h);
+      gymDays.add(w.date);
+      if (!sum.sets) continue; // rien de fait (séance vide ou tout passé)
       // Identifiant inchangé depuis la première version (date + nom) : les séances déjà importées restent reconnues.
       counts[importWorkout(d.db, w, 'menhir', `gym:${h.date}|${h.name ?? ''}`)]++;
       if (sum.tonnage > 0) tonnageByDay.set(w.date, (tonnageByDay.get(w.date) ?? 0) + sum.tonnage);
     }
     for (const [date, t] of tonnageByDay) setDailyValue(d.db, TONNAGE, date, t, 'menhir');
+    // Un jour dont le tonnage retombe à 0 (traîneau en mètres, gainage…, comptés à tort par une ancienne version) : on retire l'ancienne valeur.
+    for (const date of gymDays) if (!tonnageByDay.has(date)) deleteDailyValue(d.db, TONNAGE, date, 'menhir');
     // Ressenti du jour : Menhir garde les 60 derniers jours ; renvoyer une journée remplace sa valeur.
+    // C'est une donnée de santé : Menhir l'enregistre seulement avec ton accord (`cs.sante`). Accord retiré
+    // dans Menhir → NEXUS retire aussi les valeurs qu'il en avait importées.
     let feelings = 0;
-    const ck = data.ck && typeof data.ck === 'object' && !Array.isArray(data.ck) ? (data.ck as Record<string, unknown>) : {};
+    const cs = data.cs && typeof data.cs === 'object' ? (data.cs as Record<string, unknown>) : {};
+    if (!cs.sante) for (const [, spec] of FEELINGS) clearSourceValues(d.db, spec, 'menhir');
+    const ck = cs.sante && data.ck && typeof data.ck === 'object' && !Array.isArray(data.ck) ? (data.ck as Record<string, unknown>) : {};
     for (const [date, raw] of Object.entries(ck)) {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
       const p = menhirCheckin.safeParse(raw);

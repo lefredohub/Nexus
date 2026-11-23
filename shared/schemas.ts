@@ -344,7 +344,9 @@ export const menhirLoginInput = z.object({
  * d'où `looseNumber`. Chaque sortie, séance ou journée est vérifiée à part : une entrée abîmée
  * est ignorée sans bloquer le reste de la synchro (voir server/integrations/menhir.ts).
  */
-const menhirId = z.union([z.string().max(80), z.number()]).optional().catch(undefined);
+// Pas de longueur maximale sur les champs qui servent d'identifiant anti-doublons (id, nom de séance) :
+// les couper changerait l'identifiant et réimporterait la séance.
+const menhirId = z.union([z.string(), z.number()]).optional().catch(undefined);
 const shortText = (max: number) => z.string().max(max).optional().catch(undefined);
 
 /** Une sortie de course : date-heure `d`, distance `km`, durée `s` (secondes), D+ `up`, FC moyenne `hr`. */
@@ -382,7 +384,7 @@ const menhirExercise = z.object({
 export const menhirSession = z.object({
   id: menhirId,
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}/),
-  name: shortText(200),
+  name: z.string().optional().catch(undefined),
   dur: looseNumber.catch(undefined),
   // un exercice illisible devient `null` (ignoré) au lieu de faire tomber toute la séance
   ex: z.array(menhirExercise.nullable().catch(null)).max(100).optional().catch([]),

@@ -192,7 +192,7 @@ function MenhirCard({ m, isMac }: { m: IntegrationsData['menhir']; isMac: boolea
             login.mutate(undefined, { onSuccess: () => setPassword('') });
           }}
         >
-          <p className="text-[13px] text-ink-2">Importe tes sorties de course et séances de muscu (avec le tonnage). Lecture seule : NEXUS ne modifie rien dans Menhir. Il faut que la sauvegarde cloud soit activée dans Menhir (Réglages → Compte).</p>
+          <p className="text-[13px] text-ink-2">Importe tes sorties de course, tes séances de muscu (avec le tonnage) et ton ressenti du jour. Lecture seule : NEXUS ne modifie rien dans Menhir. Il faut que la sauvegarde cloud soit activée dans Menhir (Réglages → Compte).</p>
           <div className="grid gap-2 sm:grid-cols-2">
             <Field label="E-mail Menhir">
               <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="off" />

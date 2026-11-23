@@ -139,11 +139,31 @@ const MENHIR_DATA = {
     { id: 'a1', n: 'Footing', d: '2026-11-15T08:00', km: 8.2, s: 2520, up: 60, hr: 140, t: 'Run' },
     { id: 'g2', n: 'Trail des crêtes', d: '2026-11-16T09:00', km: 15, s: 6300, up: 640, hr: 158, t: 'TrailRun' },
     { id: 'x', d: '2026-11-17T09:00', km: 0, s: 0 }, // incomplète : ignorée
+    { id: 'y', d: 12345, km: 5, s: 1500 }, // abîmée (date illisible) : ignorée sans bloquer le reste
   ],
   h: [
-    { date: '2026-11-17T18:30:00.000Z', name: 'Haut du corps', dur: 55, ex: [{ name: 'Développé couché', sets: [{ w: 60, r: 10 }, { w: 60, r: 8 }] }, { name: 'Tractions', sets: [{ w: 0, r: 8 }] }, { name: 'Vélo', t: 'cardio', sets: [{ d: 10 }] }] },
-    { date: '2026-11-18T18:30:00.000Z', name: 'Jambes', ex: [{ name: 'Squat', sets: [{ w: 80, r: 5 }, { w: 80, r: 5 }, { w: 80, r: 5 }] }] },
+    {
+      id: 'h1', date: '2026-11-17T18:30:00.000Z', name: 'Haut du corps', dur: 55,
+      ex: [
+        { name: 'Développé couché', sets: [{ w: 60, r: 10, done: true }, { w: '60', r: '8', done: true }] }, // nombres saisis en texte
+        { name: 'Tractions', sets: [{ w: 0, r: 8 }] },
+        { name: 'Vélo', t: 'cardio', sets: [{ d: 10 }] },
+        { name: 'Dips', skip: true, sets: [] }, // passé pendant la séance : ne compte pas
+        { name: 'Planche lestée', m: 'sec', sets: [{ w: 10, r: 60 }] }, // en secondes : hors tonnage
+      ],
+    },
+    {
+      id: 'h2', date: '2026-11-18T18:30:00.000Z', name: 'Jambes',
+      ex: [
+        { name: 'Squat', sets: [{ w: 80, r: 5 }, { w: 80, r: 5 }, { w: 80, r: 5 }, { w: 80, r: 5, done: false }] }, // la 4e n'a pas été faite
+        { name: 'Sled push', u: 'm', sets: [{ w: 100, r: 25 }] }, // en mètres : hors tonnage
+      ],
+    },
+    { id: 'h3', date: '2026-11-19T18:30:00.000Z', name: 'Vide', ex: [{ name: 'Squat', skip: true, sets: [] }] }, // rien de fait : ignorée
+    { date: null, name: 'Abîmée' }, // illisible : ignorée
   ],
+  // ressenti du jour (Forme du jour) : sommeil, énergie, jambes, de 1 à 5
+  ck: { '2026-11-17': { s: 4, e: 3, c: 2 }, '2026-11-18': { s: 5 }, '2026-11-19': { s: 9 }, 'pas-une-date': { s: 1 } },
 };
 
 describe('Menhir', () => {
@@ -161,10 +181,17 @@ describe('Menhir', () => {
     expect(ws.find((w) => w.date === '2026-11-16')).toMatchObject({ type: 'run', distance_km: 15, duration_min: 105, intensity: 4, source: 'menhir' });
     const gym = ws.find((w) => w.notes.startsWith('Haut du corps'))!;
     expect(gym).toMatchObject({ type: 'strength', duration_min: 55 });
-    expect(gym.notes).toContain('1 080 kg soulevés'.replace(' ', ' ')); // 60×10 + 60×8, cardio exclu
+    expect(gym.notes).toContain('1 080 kg soulevés'.replace(' ', ' ')); // 60×10 + 60×8, cardio et gainage exclus
+    expect(gym.notes).toContain('4 exercices · 5 séries'); // Dips passé : pas compté
     expect(ws.find((w) => w.notes.startsWith('Jambes'))!.duration_min).toBe(15); // pas de durée : estimation
-    const tonnage = listMetrics(db).find((m) => m.name === 'Tonnage muscu')!;
-    expect(tonnage.entries.map((e) => e.value)).toEqual([1080, 1200]);
+    expect(ws.some((w) => w.notes.startsWith('Vide') || w.notes.startsWith('Abîmée'))).toBe(false);
+    const metrics = listMetrics(db);
+    const tonnage = metrics.find((m) => m.name === 'Tonnage muscu')!;
+    expect(tonnage.entries.map((e) => e.value)).toEqual([1080, 1200]);  // série non faite et traîneau (mètres) exclus
+    const feel = (name: string) => metrics.find((m) => m.name === name)!.entries.map((e) => [e.date, e.value]).sort();
+    expect(feel('Sommeil (ressenti)')).toEqual([['2026-11-17', 4], ['2026-11-18', 5]]); // 9 hors échelle : ignoré
+    expect(feel('Énergie (ressenti)')).toEqual([['2026-11-17', 3]]);
+    expect(feel('Jambes (ressenti)')).toEqual([['2026-11-17', 2]]);
     // Le jeton de renouvellement tourne à chaque synchro et resynchroniser n'ajoute rien.
     expect(secrets.getSecret<{ refresh_token: string }>('menhir.session')!.refresh_token).toBe('r2');
     expect((await menhir.syncMenhir(d)).added).toBe(0);

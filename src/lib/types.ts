@@ -48,6 +48,7 @@ export interface RemoteInfo {
   mode: 'off' | 'lan' | 'tailscale';
   status: { mode: string; running: boolean; port: number; error: string | null; lanUrls: string[]; tailscale: { installed: boolean; dnsName: string | null; url: string | null } } | null;
   baseUrl: string | null;
+  manualUrl: string | null;
   devices: { id: string; name: string; user_agent: string; created_at: string; last_seen_at: string }[];
   pairing: { code: string; expiresAt: string } | null;
 }

@@ -129,15 +129,21 @@ export function createApp(deps: AppDeps) {
   api.use('/remote', macOnly);
   const remoteInfo = async () => {
     const status = deps.remote ? await deps.remote.status() : null;
-    const base = status?.mode === 'tailscale' ? status.tailscale.url : status?.mode === 'lan' ? status.lanUrls[0] ?? null : null;
-    return { mode: getSettings(db).remote_mode, status, baseUrl: base, devices: listDevices(db), pairing: pairing.activeCode() };
+    const s = getSettings(db);
+    const detected = status?.mode === 'tailscale' ? status.tailscale.url : status?.mode === 'lan' ? status.lanUrls[0] ?? null : null;
+    // Une adresse saisie à la main l'emporte sur la détection automatique (utile si Tailscale n'est pas détecté).
+    const base = s.remote_mode !== 'off' && s.remote_url ? s.remote_url : detected;
+    return { mode: s.remote_mode, status, baseUrl: base, manualUrl: s.remote_url || null, devices: listDevices(db), pairing: pairing.activeCode() };
   };
   api.get('/remote', async (c) => c.json(await remoteInfo()));
   api.patch('/remote', async (c) => {
-    const { mode: next } = await body(c, S.remotePatch);
-    if (!deps.remote) throw new AppError(400, 'remote_unavailable', 'Accès distant indisponible dans ce contexte');
-    updateSettings(db, { remote_mode: next });
-    await deps.remote.apply(next);
+    const { mode: next, url } = await body(c, S.remotePatch);
+    if (url !== undefined) updateSettings(db, { remote_url: url });
+    if (next !== undefined) {
+      if (!deps.remote) throw new AppError(400, 'remote_unavailable', 'Accès distant indisponible dans ce contexte');
+      updateSettings(db, { remote_mode: next });
+      await deps.remote.apply(next);
+    }
     return c.json(await remoteInfo());
   });
   api.post('/remote/pairing', async (c) => {

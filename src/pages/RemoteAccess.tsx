@@ -108,6 +108,8 @@ export function RemoteAccessPanel() {
             </div>
           )}
 
+          <ManualUrl info={info} />
+
           <div className="flex flex-wrap items-center gap-2 border-t border-line pt-3">
             <Button variant="primary" size="sm" icon={<QrCode size={14} />} disabled={!st.running} onClick={() => setPairing(true)}>
               Appairer un appareil
@@ -137,6 +139,60 @@ export function RemoteAccessPanel() {
 
       <PairingModal open={pairing} onClose={() => (setPairing(false), void queryClient.invalidateQueries({ queryKey: ['remote'] }))} />
     </Panel>
+  );
+}
+
+/**
+ * Adresse de NEXUS pour l'iPhone. Détectée automatiquement si possible ; sinon on la
+ * saisit (Tailscale : app Tailscale → ce Mac → nom complet en « .ts.net »).
+ */
+function ManualUrl({ info }: { info: RemoteInfo }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(info.manualUrl ?? '');
+  const save = useAction((url: string) => api('/remote', { method: 'PATCH', body: { url } }), { success: 'Adresse enregistrée' });
+  const missing = !info.baseUrl;
+  if (!missing && !editing) {
+    return (
+      <div className="space-y-1.5">
+        <div className="label">Adresse pour l’iPhone</div>
+        <UrlRow url={info.baseUrl!} />
+        <button onClick={() => (setValue(info.manualUrl ?? info.baseUrl ?? ''), setEditing(true))} className="text-[12px] text-ink-3 underline hover:text-ink">
+          Ce n’est pas la bonne adresse ?
+        </button>
+      </div>
+    );
+  }
+  return (
+    <form
+      className="space-y-2 rounded-lg border border-warn/30 bg-warn/[0.05] p-3"
+      onSubmit={(e) => {
+        e.preventDefault();
+        save.mutate(value.trim(), { onSuccess: () => setEditing(false) });
+      }}
+    >
+      <div className="text-[13px] font-medium">Adresse pour l’iPhone</div>
+      <div className="text-[12px] text-ink-2">
+        {info.mode === 'tailscale'
+          ? 'Ouvre l’app Tailscale (barre des menus du Mac, ou sur l’iPhone) → ce Mac : copie son nom complet qui finit par « .ts.net », et écris-le ici précédé de https://'
+          : 'L’adresse IP du Mac sur ton Wi-Fi (Réglages Système → Wi-Fi → Détails), sous la forme http://192.168.x.x:4318'}
+      </div>
+      <div className="flex gap-2">
+        <input
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          placeholder={info.mode === 'tailscale' ? 'https://mon-mac.tail1234.ts.net' : 'http://192.168.1.20:4318'}
+          className="field !h-9 font-mono text-[12.5px]"
+        />
+        <Button type="submit" size="sm" variant="primary" loading={save.isPending} disabled={!value.trim()}>
+          Enregistrer
+        </Button>
+        {info.manualUrl && (
+          <Button type="button" size="sm" variant="ghost" onClick={() => save.mutate('', { onSuccess: () => (setValue(''), setEditing(false)) })}>
+            Auto
+          </Button>
+        )}
+      </div>
+    </form>
   );
 }
 
@@ -198,7 +254,7 @@ function PairingModal({ open, onClose }: { open: boolean; onClose: () => void })
               // Modules sombres sur fond blanc : c'est ce que l'appareil photo de l'iPhone lit le mieux.
               <div className="w-[180px] shrink-0 overflow-hidden rounded-xl bg-white p-2 [&>svg]:h-auto [&>svg]:w-full" dangerouslySetInnerHTML={{ __html: data.qr }} />
             ) : (
-              <div className="flex h-[180px] w-[180px] shrink-0 items-center justify-center rounded-xl border border-dashed border-line p-4 text-center text-[12px] text-ink-3">Adresse inconnue : saisis le code à la main sur l’iPhone.</div>
+              <div className="flex h-[180px] w-[180px] shrink-0 items-center justify-center rounded-xl border border-dashed border-line p-4 text-center text-[12px] text-ink-3">Pas de QR code : NEXUS ne connaît pas encore son adresse. Renseigne-la dans « Adresse pour l’iPhone » pour l’obtenir.</div>
             )}
             <div className="text-center sm:text-left">
               <div className="label mb-1">Code</div>
@@ -206,8 +262,14 @@ function PairingModal({ open, onClose }: { open: boolean; onClose: () => void })
               <div className={cx('font-mono text-[11px]', left < 60 ? 'text-warn' : 'text-ink-3')}>{left > 0 ? `expire dans ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}` : 'expiré — ferme et recommence'}</div>
             </div>
           </div>
+          {!data.url && (
+            <div className="rounded-xl border border-warn/30 bg-warn/[0.06] p-3 text-[13px] text-ink-2">
+              <div className="mb-1 font-medium text-ink">Où taper ce code ?</div>
+              Sur l’iPhone : Tailscale activé, ouvre <span className="text-ink">Safari</span> à l’adresse de ton NEXUS (<code className="font-mono">https://nom-du-mac.tailXXXX.ts.net</code>, visible dans l’app Tailscale → ton Mac). La page « Relier cet appareil » s’affiche : tape le code ci-dessus.
+            </div>
+          )}
           <ol className="list-decimal space-y-1.5 pl-5 text-[13px] text-ink-2">
-            <li>Scanne le QR code avec l’appareil photo de l’iPhone : Safari s’ouvre et l’iPhone est relié.</li>
+            <li>{data.url ? 'Scanne le QR code avec l’appareil photo de l’iPhone : Safari s’ouvre et l’iPhone est relié.' : 'Ouvre l’adresse de ton NEXUS dans Safari sur l’iPhone et tape le code.'}</li>
             <li>
               Pour l’avoir comme une app : dans Safari, <span className="text-ink">Partager → Sur l’écran d’accueil</span>.
             </li>

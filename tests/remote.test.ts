@@ -138,3 +138,19 @@ describe('mode vocal', () => {
     expect(turnContext(db, false)).not.toContain(VOICE_HINT);
   });
 });
+
+describe('adresse pour l’iPhone saisie à la main', () => {
+  it('sert de base au QR code quand la détection échoue', async () => {
+    const s = setup();
+    const local = (path: string, init: { method?: string; body?: unknown } = {}) => s.call(s.local, path, { ...init, host: '127.0.0.1:4317' });
+    expect((await local('/remote', { method: 'PATCH', body: { url: 'pas une adresse' } })).status).toBe(422);
+    const r = await local('/remote', { method: 'PATCH', body: { url: 'https://mon-mac.tail1234.ts.net/' } });
+    expect(((await r.json()) as { manualUrl: string }).manualUrl).toBe('https://mon-mac.tail1234.ts.net');
+    // Sans porte distante active (mode « off »), pas d'adresse ; une fois le mode choisi, elle sert au QR code.
+    const { updateSettings } = await import('../server/repos/settings');
+    updateSettings(s.db, { remote_mode: 'tailscale' });
+    const pairing = (await (await local('/remote/pairing', { body: {} })).json()) as { code: string; url: string; qr: string };
+    expect(pairing.url).toBe(`https://mon-mac.tail1234.ts.net/?pair=${pairing.code}`);
+    expect(pairing.qr).toContain('<svg');
+  });
+});

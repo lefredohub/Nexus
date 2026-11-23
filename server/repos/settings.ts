@@ -13,6 +13,8 @@ export interface Settings {
   onboarded: boolean;
   /** Porte d'accès distant (iPhone) : désactivée par défaut. */
   remote_mode: 'off' | 'lan' | 'tailscale';
+  /** Adresse de NEXUS pour l'iPhone, saisie à la main si la détection automatique échoue (vide = automatique). */
+  remote_url: string;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -25,6 +27,7 @@ export const DEFAULT_SETTINGS: Settings = {
   currency: 'EUR',
   onboarded: false,
   remote_mode: 'off',
+  remote_url: '',
 };
 
 export function getSettings(db: DB): Settings {

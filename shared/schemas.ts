@@ -293,7 +293,16 @@ export const apiKeyInput = z.object({
 // ─── Accès distant (iPhone) ──────────────────────────────────────────────────
 
 export const REMOTE_MODES = ['off', 'lan', 'tailscale'] as const;
-export const remotePatch = z.object({ mode: z.enum(REMOTE_MODES) });
+export const remotePatch = z.object({
+  mode: z.enum(REMOTE_MODES).optional(),
+  /** Adresse saisie à la main (ex. https://mon-mac.tail1234.ts.net) ; chaîne vide = détection automatique. */
+  url: z
+    .string()
+    .trim()
+    .transform((u) => u.replace(/\/+$/, ''))
+    .refine((u) => u === '' || /^https?:\/\/[a-z0-9.-]+(:\d+)?$/i.test(u), 'Adresse attendue du type https://mon-mac.tail1234.ts.net')
+    .optional(),
+});
 export const pairInput = z.object({
   code: z.string().trim().regex(/^\d{6}$/, 'Le code contient 6 chiffres'),
   name: z.string().trim().max(60).default(''),

@@ -77,6 +77,8 @@ export function CommandCenter() {
         </header>
       </Reveal>
 
+      {demo?.empty && <DemoBanner />}
+
       {isLoading || !o ? (
         <div className="grid grid-cols-12 gap-4">
           {Array.from({ length: 4 }).map((_, i) => (
@@ -181,6 +183,24 @@ export function CommandCenter() {
         </div>
       )}
     </div>
+  );
+}
+
+/** Espace vide après « Partir de zéro » : on peut encore charger la démo. */
+function DemoBanner() {
+  const load = useAction(() => api('/demo', { body: {} }), { success: 'Données de démonstration chargées' });
+  return (
+    <Reveal>
+      <Panel className="mb-4 flex flex-wrap items-center gap-3 p-4">
+        <div className="min-w-0 flex-1">
+          <div className="text-[14px] font-medium">Ton espace est vide</div>
+          <div className="text-[12.5px] text-ink-3">Envie de voir NEXUS rempli ? Charge des données fictives, tu pourras les effacer ensuite (Réglages → Données → Réinitialiser).</div>
+        </div>
+        <Button variant="primary" loading={load.isPending} onClick={() => load.mutate(undefined)}>
+          Explorer avec une démo
+        </Button>
+      </Panel>
+    </Reveal>
   );
 }
 

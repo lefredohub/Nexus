@@ -20,6 +20,9 @@ export function SettingsPage() {
 
   const patch = useAction((body: Partial<Settings>) => api('/settings', { method: 'PATCH', body }), { success: 'Réglage enregistré' });
   const backup = useAction(() => api<{ file: string }>('/backup', { body: {} }), { success: (r) => `Sauvegarde créée : ${r.file.split('/').pop()}` });
+  // Espace vide ? On propose de charger la démo (sinon elle n'est accessible qu'au tout premier lancement).
+  const { data: demo } = useApi<{ empty: boolean }>(['demo'], '/demo');
+  const loadDemo = useAction(() => api('/demo', { body: {} }), { success: 'Données de démonstration chargées' });
   const reset = useAction(() => api<{ backup: string }>('/reset', { body: { confirm: confirmText } }), { success: 'Espace réinitialisé (une sauvegarde a été créée)' });
 
   return (
@@ -59,6 +62,17 @@ export function SettingsPage() {
           <p className="mb-4 text-[13px] text-ink-2">
             Base SQLite locale : <code className="font-mono text-[12px] text-ink">data/nexus.db</code>. Sauvegarde ce dossier pour tout conserver.
           </p>
+          {demo?.empty && (
+            <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-ion/30 bg-ion/[0.05] p-4">
+              <div className="min-w-0 flex-1">
+                <div className="text-[13.5px] font-medium">Ton espace est vide</div>
+                <div className="text-[12.5px] text-ink-3">Charge des données fictives (projets, sport, finances, habitudes) pour découvrir NEXUS. Tu pourras tout effacer ensuite avec « Réinitialiser l’espace ».</div>
+              </div>
+              <Button variant="primary" loading={loadDemo.isPending} onClick={() => loadDemo.mutate(undefined)}>
+                Charger la démo
+              </Button>
+            </div>
+          )}
           <div className="flex flex-wrap gap-2">
             <a href="/api/export" className="focus-ring inline-flex h-9 items-center gap-2 rounded-[10px] border border-line bg-white/[0.05] px-3.5 text-[13px] font-medium hover:bg-white/[0.08]" onClick={() => toast('Export JSON en cours de téléchargement')}>
               <Download size={14} /> Exporter en JSON

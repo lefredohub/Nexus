@@ -337,3 +337,61 @@ export const menhirLoginInput = z.object({
   email: z.string().trim().email('E-mail invalide'),
   password: z.string().min(1, 'Mot de passe requis').max(200),
 });
+
+/*
+ * Données lues dans Menhir (la ligne `fitlog_data` de sa sauvegarde Supabase).
+ * Menhir garde les nombres comme ils ont été saisis : ils arrivent parfois en texte (« 60 », « 7,5 »),
+ * d'où `looseNumber`. Chaque sortie, séance ou journée est vérifiée à part : une entrée abîmée
+ * est ignorée sans bloquer le reste de la synchro (voir server/integrations/menhir.ts).
+ */
+// Pas de longueur maximale sur les champs qui servent d'identifiant anti-doublons (id, nom de séance) :
+// les couper changerait l'identifiant et réimporterait la séance.
+const menhirId = z.union([z.string(), z.number()]).optional().catch(undefined);
+const shortText = (max: number) => z.string().max(max).optional().catch(undefined);
+
+/** Une sortie de course : date-heure `d`, distance `km`, durée `s` (secondes), D+ `up`, FC moyenne `hr`. */
+export const menhirRun = z.object({
+  id: menhirId,
+  n: shortText(200),
+  d: z.string().regex(/^\d{4}-\d{2}-\d{2}/),
+  km: looseNumber.catch(undefined),
+  s: looseNumber.catch(undefined),
+  up: looseNumber.catch(undefined),
+  hr: looseNumber.catch(undefined),
+  t: shortText(40),
+});
+export type MenhirRun = z.infer<typeof menhirRun>;
+
+/** Une série : charge `w` (kg), répétitions `r` (ou secondes, ou mètres selon l'exercice), minutes `d` pour le cardio. */
+const menhirSet = z.object({
+  w: looseNumber.catch(undefined),
+  r: looseNumber.catch(undefined),
+  d: looseNumber.catch(undefined),
+  done: z.boolean().optional().catch(undefined),
+});
+
+/** Un exercice : `t: 'cardio'`, `m: 'sec'` (en secondes), `u: 'm'` (en mètres), `skip` (passé pendant la séance). */
+const menhirExercise = z.object({
+  name: z.string().max(200),
+  t: shortText(20),
+  m: shortText(20),
+  u: shortText(10),
+  skip: z.boolean().optional().catch(undefined),
+  sets: z.array(menhirSet.catch({})).max(300).optional().catch([]),
+});
+
+/** Une séance de musculation terminée (historique `h` de Menhir). */
+export const menhirSession = z.object({
+  id: menhirId,
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}/),
+  name: z.string().optional().catch(undefined),
+  dur: looseNumber.catch(undefined),
+  // un exercice illisible devient `null` (ignoré) au lieu de faire tomber toute la séance
+  ex: z.array(menhirExercise.nullable().catch(null)).max(100).optional().catch([]),
+});
+export type MenhirSession = z.infer<typeof menhirSession>;
+
+/** Ressenti du jour dans Menhir (« Forme du jour ») : sommeil `s`, énergie `e`, jambes `c`, de 1 à 5. */
+const feel = z.number().int().min(1).max(5).optional().catch(undefined);
+export const menhirCheckin = z.object({ s: feel, e: feel, c: feel });
+export type MenhirCheckin = z.infer<typeof menhirCheckin>;

@@ -133,7 +133,7 @@ Tout se fait dans **Analytics → Sources** (sur le Mac). Les séances arrivent 
 2. Dans NEXUS, colle le *Client ID* et le *Client Secret*, puis **Connecter avec Strava** et accepte (coche l'accès aux activités). NEXUS importe les 180 derniers jours, puis les nouveautés.
 
 **Menhir** (synchro automatique toutes les heures, lecture seule)
-- La sauvegarde cloud doit être activée dans Menhir (Réglages → Compte). Dans NEXUS, saisis l'e-mail et le mot de passe de ton compte Menhir : le mot de passe sert une seule fois, il n'est pas conservé. Sont importées les sorties de course et les séances de muscu (avec une métrique « Tonnage muscu »). NEXUS ne modifie jamais rien dans Menhir.
+- La sauvegarde cloud doit être activée dans Menhir (Réglages → Compte). Dans NEXUS, saisis l'e-mail et le mot de passe de ton compte Menhir : le mot de passe sert une seule fois, il n'est pas conservé. Sont importées les sorties de course, les séances de muscu (séries faites, avec une métrique « Tonnage muscu ») et le ressenti du jour de l'écran « Forme du jour » (métriques « Sommeil », « Énergie » et « Jambes (ressenti) », de 1 à 5, seulement si l'accord santé est donné dans Menhir : s'il est retiré, NEXUS retire aussi ces valeurs). NEXUS ne modifie jamais rien dans Menhir.
 
 **Apple Santé** (via un Raccourci iPhone, chaque soir)
 - Apple ne permet pas d'accès en ligne aux données Santé : c'est l'iPhone qui les envoie. Active d'abord l'accès iPhone (Tailscale), puis dans Sources : **Créer un jeton pour le Raccourci** et suis le guide affiché (automatisation quotidienne dans l'app Raccourcis). Envoyés : pas, calories actives, poids, FC au repos. Le jeton ne permet *que* d'envoyer des mesures de santé.

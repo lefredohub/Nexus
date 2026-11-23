@@ -116,6 +116,20 @@ export function setDailyValue(db: DB, spec: MetricSpec, date: string, value: num
   return existed ? 'updated' : 'added';
 }
 
+/** Retire la valeur d'un jour pour une source (la source n'a plus rien pour ce jour, ex. tonnage recalculé à 0). */
+export function deleteDailyValue(db: DB, spec: MetricSpec, date: string, source: string): boolean {
+  const m = get<{ id: string }>(db, 'SELECT id FROM metrics WHERE key = :key', { key: spec.key });
+  if (!m) return false;
+  return run(db, 'DELETE FROM metric_entries WHERE metric_id = :metricId AND date = :date AND source = :source', { metricId: m.id, date, source }).changes > 0;
+}
+
+/** Retire toutes les valeurs d'une source pour une métrique (ex. accord retiré dans l'app d'origine). La métrique reste. */
+export function clearSourceValues(db: DB, spec: MetricSpec, source: string): number {
+  const m = get<{ id: string }>(db, 'SELECT id FROM metrics WHERE key = :key', { key: spec.key });
+  if (!m) return 0;
+  return Number(run(db, 'DELETE FROM metric_entries WHERE metric_id = :metricId AND source = :source', { metricId: m.id, source }).changes);
+}
+
 // ─── État des intégrations ───────────────────────────────────────────────────
 
 export interface SyncState {

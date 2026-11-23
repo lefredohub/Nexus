@@ -10,14 +10,22 @@
  *
  * Ce qui est importé :
  *  - les sorties de course (`runs`) : date, durée, distance, D+, fréquence cardiaque ;
- *  - les séances de musculation (`h`) : durée, exercices, séries, tonnage
- *    (et une métrique « Tonnage muscu » par jour).
+ *  - les séances de musculation (`h`) : durée, exercices, séries faites, tonnage
+ *    (et une métrique « Tonnage muscu » par jour) ;
+ *  - le ressenti du jour (`ck`, écran « Forme du jour ») : sommeil, énergie, jambes, de 1 à 5,
+ *    en trois métriques quotidiennes.
+ *
+ * Chaque entrée passe par un schéma Zod (`shared/schemas.ts`) : une entrée abîmée est ignorée
+ * sans bloquer les autres.
  */
 import type { DB } from '../db/client';
 import { todayISO } from '../db/client';
 import { logActivity } from '../repos/activity';
 import type { SecretStore } from '../ai/secrets';
-import { importWorkout, intensityFromHeartRate, setDailyValue, getState, setState, clearState, addTotals, fetchJson, IntegrationError, type MetricSpec } from './common';
+import { importWorkout, intensityFromHeartRate, setDailyValue, deleteDailyValue, clearSourceValues, getState, setState, clearState, addTotals, fetchJson, IntegrationError, type MetricSpec } from './common';
+import { menhirRun, menhirSession, menhirCheckin, type MenhirRun, type MenhirSession, type MenhirCheckin } from '../../shared/schemas';
+
+export type { MenhirRun, MenhirSession };
 
 const ID = 'menhir';
 /** Adresse de l'app Menhir : on y lit config.js (adresse Supabase + clé publique). */
@@ -34,12 +42,13 @@ export interface MenhirDeps {
 interface Session { url: string; key: string; refresh_token: string; user_id: string; email: string }
 interface AuthResponse { access_token: string; refresh_token: string; user?: { id: string; email?: string } }
 
-/** Une sortie de course telle que Menhir la stocke. */
-export interface MenhirRun { id?: string | number; n?: string; d: string; km?: number; s?: number; up?: number; hr?: number | null; t?: string }
-/** Une séance de musculation telle que Menhir la stocke. */
-export interface MenhirSession { date: string; name?: string; dur?: number; ex?: { name: string; t?: string; sets?: { w?: number; r?: number; d?: number }[] }[] }
-
 const TONNAGE: MetricSpec = { key: 'menhir.tonnage', name: 'Tonnage muscu', unit: 'kg', direction: 'up', category: 'sport', color: '#b8851c' };
+/** Ressenti du jour de Menhir : une métrique par question (1 = mauvais, 5 = excellent). */
+const FEELINGS: [keyof MenhirCheckin, MetricSpec][] = [
+  ['s', { key: 'menhir.sommeil', name: 'Sommeil (ressenti)', unit: '/5', direction: 'up', category: 'health', color: '#7c8fd6' }],
+  ['e', { key: 'menhir.energie', name: 'Énergie (ressenti)', unit: '/5', direction: 'up', category: 'health', color: '#d9a43a' }],
+  ['c', { key: 'menhir.jambes', name: 'Jambes (ressenti)', unit: '/5', direction: 'up', category: 'health', color: '#3fae82' }],
+];
 
 /** Lit l'adresse Supabase et la clé publique dans le config.js de Menhir. */
 export async function menhirConfig(f: typeof fetch): Promise<{ url: string; key: string }> {
@@ -109,18 +118,35 @@ export function runToWorkout(r: MenhirRun) {
   };
 }
 
-/** Résumé d'une séance de muscu : exercices, séries, tonnage (charge × répétitions). */
+type MenhirExercise = NonNullable<NonNullable<MenhirSession['ex']>[number]>;
+type MenhirSet = NonNullable<MenhirExercise['sets']>[number];
+
+/**
+ * Une série compte si elle a été faite : Menhir garde les séries validées, avec des répétitions
+ * (ou des minutes pour le cardio). `done: false` = pas faite ; les données plus anciennes,
+ * sans `done`, sont considérées comme faites.
+ */
+const isDone = (e: MenhirExercise, s: MenhirSet) => s.done !== false && ((e.t === 'cardio' ? s.d : s.r) ?? 0) > 0;
+
+/**
+ * Résumé d'une séance de muscu : exercices faits, séries faites, tonnage (charge × répétitions).
+ * Les exercices passés (`skip`) ne comptent pas. Le tonnage ignore le cardio, les exercices
+ * en secondes (gainage : `m: 'sec'`) et en mètres (traîneau HYROX : `u: 'm'`), où « répétitions »
+ * n'est pas un nombre de répétitions.
+ */
 export function sessionSummary(h: MenhirSession) {
-  const ex = h.ex ?? [];
+  let exercises = 0;
   let sets = 0;
   let tonnage = 0;
-  for (const e of ex) {
-    for (const s of e.sets ?? []) {
-      sets++;
-      if (e.t !== 'cardio') tonnage += (s.w ?? 0) * (s.r ?? 0);
-    }
+  for (const e of h.ex ?? []) {
+    if (!e || e.skip) continue;
+    const done = (e.sets ?? []).filter((s) => isDone(e, s));
+    if (!done.length) continue;
+    exercises++;
+    sets += done.length;
+    if (e.t !== 'cardio' && e.m !== 'sec' && e.u !== 'm') for (const s of done) tonnage += (s.w ?? 0) * (s.r ?? 0);
   }
-  return { exercises: ex.length, sets, tonnage: Math.round(tonnage) };
+  return { exercises, sets, tonnage: Math.round(tonnage) };
 }
 
 export function sessionToWorkout(h: MenhirSession) {
@@ -142,27 +168,60 @@ export async function syncMenhir(d: MenhirDeps): Promise<Record<string, number>>
   const state = getState(d.db, ID);
   try {
     const { token, session } = await accessToken(d);
-    const rows = await fetchJson<{ data: { runs?: MenhirRun[]; h?: MenhirSession[] } }[]>(
+    const rows = await fetchJson<{ data: { runs?: unknown; h?: unknown; ck?: unknown; cs?: unknown } | null }[]>(
       d.fetch ?? fetch,
       ...sb(session, `/rest/v1/fitlog_data?select=data&user_id=eq.${encodeURIComponent(session.user_id)}`, {}, token),
       'Menhir',
     );
     const data = rows[0]?.data ?? {};
+    const list = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
     const counts = { added: 0, known: 0, similar: 0 };
-    for (const r of data.runs ?? []) {
-      if (!r?.d || !(r.s && r.s > 0)) continue;
-      counts[importWorkout(d.db, runToWorkout(r), 'menhir', `run:${r.id ?? `${r.d}|${r.km}`}`)]++;
+    for (const raw of list(data.runs)) {
+      const p = menhirRun.safeParse(raw);
+      if (!p.success) continue;
+      const r = p.data;
+      if (!(r.s && r.s > 0)) continue;
+      // Identifiant construit avec la distance telle que Menhir l'a écrite (« 8.20 » reste « 8.20 »), comme avant.
+      const rawKm = (raw as { km?: unknown }).km;
+      counts[importWorkout(d.db, runToWorkout(r), 'menhir', `run:${r.id ?? `${r.d}|${rawKm}`}`)]++;
     }
     const tonnageByDay = new Map<string, number>();
-    for (const h of data.h ?? []) {
-      if (!h?.date || !(h.ex ?? []).length) continue;
+    const gymDays = new Set<string>(); // jours avec une séance dans Menhir, même sans tonnage
+    for (const raw of list(data.h)) {
+      const p = menhirSession.safeParse(raw);
+      if (!p.success) continue;
+      const h = p.data;
+      const sum = sessionSummary(h);
       const w = sessionToWorkout(h);
+      gymDays.add(w.date);
+      if (!sum.sets) continue; // rien de fait (séance vide ou tout passé)
+      // Identifiant inchangé depuis la première version (date + nom) : les séances déjà importées restent reconnues.
       counts[importWorkout(d.db, w, 'menhir', `gym:${h.date}|${h.name ?? ''}`)]++;
-      const t = sessionSummary(h).tonnage;
-      if (t > 0) tonnageByDay.set(w.date, (tonnageByDay.get(w.date) ?? 0) + t);
+      if (sum.tonnage > 0) tonnageByDay.set(w.date, (tonnageByDay.get(w.date) ?? 0) + sum.tonnage);
     }
     for (const [date, t] of tonnageByDay) setDailyValue(d.db, TONNAGE, date, t, 'menhir');
-    setState(d.db, ID, { lastSyncAt: new Date().toISOString(), lastError: null, lastResult: counts, totals: addTotals(state.totals, counts) });
+    // Un jour dont le tonnage retombe à 0 (traîneau en mètres, gainage…, comptés à tort par une ancienne version) : on retire l'ancienne valeur.
+    for (const date of gymDays) if (!tonnageByDay.has(date)) deleteDailyValue(d.db, TONNAGE, date, 'menhir');
+    // Ressenti du jour : Menhir garde les 60 derniers jours ; renvoyer une journée remplace sa valeur.
+    // C'est une donnée de santé : Menhir l'enregistre seulement avec ton accord (`cs.sante`). Accord retiré
+    // dans Menhir → NEXUS retire aussi les valeurs qu'il en avait importées.
+    let feelings = 0;
+    const cs = data.cs && typeof data.cs === 'object' ? (data.cs as Record<string, unknown>) : {};
+    if (!cs.sante) for (const [, spec] of FEELINGS) clearSourceValues(d.db, spec, 'menhir');
+    const ck = cs.sante && data.ck && typeof data.ck === 'object' && !Array.isArray(data.ck) ? (data.ck as Record<string, unknown>) : {};
+    for (const [date, raw] of Object.entries(ck)) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+      const p = menhirCheckin.safeParse(raw);
+      if (!p.success) continue;
+      for (const [k, spec] of FEELINGS) {
+        const v = p.data[k];
+        if (v) {
+          setDailyValue(d.db, spec, date, v, 'menhir');
+          feelings++;
+        }
+      }
+    }
+    setState(d.db, ID, { lastSyncAt: new Date().toISOString(), lastError: null, lastResult: { ...counts, feelings }, totals: addTotals(state.totals, counts) });
     if (counts.added > 0) logActivity(d.db, { kind: 'integration.sync', title: `Menhir : ${counts.added} séance${counts.added > 1 ? 's' : ''} importée${counts.added > 1 ? 's' : ''}`, actor: 'system' });
     return counts;
   } catch (err) {
